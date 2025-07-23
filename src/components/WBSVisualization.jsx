@@ -7,7 +7,6 @@ import {
   Chip,
   Paper,
   Tooltip,
-  Badge,
   TextField,
   InputAdornment,
   Alert
@@ -75,7 +74,7 @@ const NewBadge = styled(Chip)(({ theme }) => ({
   }
 }));
 
-const WBSTreeVisualization = ({ 
+const WBSVisualization = ({ 
   showSearch = true,
   showNewBadges = true,
   expandAllByDefault = false,
@@ -346,9 +345,9 @@ const WBSTreeVisualization = ({
 
   // Render tree statistics
   const renderTreeStats = () => {
-    const totalNodes = project.wbs_structure.length;
-    const newNodes = comparison.added.length;
-    const maxLevel = Math.max(...(project.wbs_structure.map(item => item.level || 1)));
+    const totalNodes = project.wbs_structure?.length || 0;
+    const newNodes = comparison.added?.length || 0;
+    const maxLevel = totalNodes > 0 ? Math.max(...(project.wbs_structure.map(item => item.level || 1))) : 0;
 
     return (
       <Box sx={{ mb: 2, p: 2, backgroundColor: `${BRAND_COLORS.level1}20`, borderRadius: 1 }}>
@@ -368,11 +367,13 @@ const WBSTreeVisualization = ({
               size="small" 
             />
           )}
-          <Chip 
-            label={`${maxLevel} Levels Deep`} 
-            color="default" 
-            size="small" 
-          />
+          {maxLevel > 0 && (
+            <Chip 
+              label={`${maxLevel} Levels Deep`} 
+              color="default" 
+              size="small" 
+            />
+          )}
         </Box>
       </Box>
     );
@@ -507,4 +508,4 @@ const WBSTreeVisualization = ({
   );
 };
 
-export default WBSTreeVisualization;
+export default WBSVisualization;
