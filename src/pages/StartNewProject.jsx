@@ -97,6 +97,7 @@ const StartNewProject = () => {
   const [activeStep, setActiveStep] = useState(0);
   const [processingResults, setProcessingResults] = useState(null);
   const [showInstructions, setShowInstructions] = useState(true);
+  const [uploadedFile, setUploadedFile] = useState(null);
 
   // Clear messages on component mount
   useEffect(() => {
@@ -104,65 +105,40 @@ const StartNewProject = () => {
     initializeProject('New Project');
   }, [clearMessages, initializeProject]);
 
-  // Process equipment file after upload
-// Process equipment file after upload
-// Process equipment file after upload
-  const handleFileProcessed = async (fileData) => {
+  // Handle file upload (just store the file, don't process yet)
+  const handleFileUploaded = (file) => {
+    console.log('File uploaded:', file.name);
+    setUploadedFile(file);
+  };
+
+  // Process the uploaded file
+  const handleProcessFile = async () => {
+    if (!uploadedFile) {
+      setError('No file uploaded. Please upload a file first.');
+      return;
+    }
+
     try {
       setLoading(true);
       setProcessingStage('parsing', 10, 'Processing uploaded file...');
 
-      console.log('File data received:', fileData); // Debug log
+      console.log('Processing file:', uploadedFile.name);
 
-      // Check if we have file data
-      if (!fileData || !fileData.raw) {
-        console.error('No file data available:', fileData);
-        throw new Error('No file data available - please try uploading again');
-      }
-
-      // Parse CSV using Papa Parse directly
-      console.log('Parsing CSV content...');
-      const Papa = await import('papaparse');
-      const parseResult = Papa.default.parse(fileData.raw, {
-        header: true,
-        dynamicTyping: true,
-        skipEmptyLines: true,
-        transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_')
-      });
-
+      // Use the new parseFile function that handles both CSV and Excel
+      const parseResult = await parseFile(uploadedFile);
+      
       console.log('Parse result:', parseResult);
 
-      if (parseResult.errors.length > 0) {
-        console.warn('CSV parsing warnings:', parseResult.errors);
+      if (!parseResult || !parseResult.data || parseResult.data.length === 0) {
+        throw new Error('No valid equipment data found. Please check your file contains equipment information.');
       }
 
-      // Clean and filter data
-      const equipmentData = parseResult.data
-        .filter(item => {
-          // Check if item has equipment_number in various formats
-          return item.equipment_number || item.equipment_no || item.equipment_code || item.code || item.equipment;
-        })
-        .map(item => {
-          // Normalize the equipment number field
-          const equipmentNumber = item.equipment_number || item.equipment_no || item.equipment_code || item.code || item.equipment;
-          return {
-            equipment_number: equipmentNumber ? equipmentNumber.toString().trim().toUpperCase() : '',
-            description: item.description || item.desc || '',
-            commissioning_status: item.commissioning_status || item.status || 'Y',
-            plu_field: item.plu_field || item.plu || ''
-          };
-        })
-        .filter(item => item.equipment_number !== ''); // Remove items with no equipment number
-
-      console.log(`Processed ${equipmentData.length} equipment items:`, equipmentData.slice(0, 3));
-
-      if (equipmentData.length === 0) {
-        throw new Error('No valid equipment data found. Please check your CSV has an "equipment_number" column.');
-      }
+      const equipmentData = parseResult.data;
+      console.log(`Successfully parsed ${equipmentData.length} equipment items`);
 
       setProcessingStage('categorizing_equipment', 30, 'Categorizing equipment...');
 
-      // Simple categorization for now
+      // Simple categorization for now (can be enhanced later)
       const categorizedEquipment = equipmentData.map(item => ({
         ...item,
         category: '99',
@@ -171,24 +147,25 @@ const StartNewProject = () => {
         parent_equipment: null
       }));
 
-      setProcessingStage('generating_wbs', 60, 'Generating basic WBS structure...');
+      setProcessingStage('generating_wbs', 60, 'Generating WBS structure...');
 
       // Simple WBS structure for testing
       const wbsStructure = [
         {
           wbs_code: '1',
           parent_wbs_code: null,
-          wbs_name: 'Test Project',
+          wbs_name: 'Project',
           level: 1,
           color: '#C8D982',
           is_equipment: false
         },
-        ...categorizedEquipment.slice(0, 10).map((item, index) => ({ // Limit to 10 items for testing
+        ...categorizedEquipment.slice(0, 50).map((item, index) => ({ // Limit for testing
           wbs_code: `1.${index + 1}`,
           parent_wbs_code: '1',
           wbs_name: `${item.equipment_number} | ${item.description}`,
           equipment_number: item.equipment_number,
           description: item.description,
+          commissioning_status: item.commissioning_status,
           level: 2,
           color: '#A8CC6B',
           is_equipment: true
@@ -205,7 +182,11 @@ const StartNewProject = () => {
       setProcessingResults({
         equipment: {
           equipment: categorizedEquipment,
-          total_processed: categorizedEquipment.length
+          total_processed: categorizedEquipment.length,
+          summary: {
+            processing_warnings: []
+          },
+          grouped: { '99': categorizedEquipment }
         },
         wbs: {
           wbs_structure: wbsStructure,
@@ -241,6 +222,7 @@ const StartNewProject = () => {
   const handleReset = () => {
     setActiveStep(0);
     setProcessingResults(null);
+    setUploadedFile(null);
     initializeProject('New Project');
     clearMessages();
   };
@@ -270,23 +252,23 @@ const StartNewProject = () => {
               <Collapse in={showInstructions}>
                 <Alert severity="info" sx={{ mb: 2 }}>
                   <Typography variant="body2" sx={{ mb: 1 }}>
-                    <strong>Required File Format:</strong> CSV file with equipment data
+                    <strong>Supported File Formats:</strong> CSV and Excel (.xlsx, .xls) files
                   </Typography>
                   <Typography variant="body2" component="div">
                     <strong>Required Columns:</strong>
                     <List dense>
                       <ListItem sx={{ py: 0 }}>
                         <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
-                        <ListItemText primary="equipment_number (or equipment_code)" />
+                        <ListItemText primary="equipment_number (or equipment_code, tag, etc.)" />
                       </ListItem>
                       <ListItem sx={{ py: 0 }}>
                         <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
-                        <ListItemText primary="description" />
+                        <ListItemText primary="description (or equipment_description)" />
                       </ListItem>
                     </List>
                   </Typography>
                   <Typography variant="body2">
-                    <strong>Optional Columns:</strong> commissioning_status, plu_field, category
+                    <strong>Optional Columns:</strong> commissioning_status, plu_field, category, location
                   </Typography>
                 </Alert>
               </Collapse>
@@ -296,10 +278,25 @@ const StartNewProject = () => {
             <FileUpload
               uploadType="equipment_list"
               title="Upload Equipment List"
-              description="Upload your CSV file containing equipment data"
-              accept=".csv"
-              onFileProcessed={handleFileProcessed}
+              description="Upload your CSV or Excel file containing equipment data"
+              accept=".csv,.xlsx,.xls"
+              onFileProcessed={handleFileUploaded}
             />
+
+            {/* Process Button */}
+            {uploadedFile && (
+              <Box sx={{ mt: 3, textAlign: 'center' }}>
+                <StyledButton
+                  variant="contained"
+                  size="large"
+                  onClick={handleProcessFile}
+                  disabled={ui.loading}
+                  startIcon={<Settings />}
+                >
+                  {ui.loading ? 'Processing...' : 'Process Equipment List'}
+                </StyledButton>
+              </Box>
+            )}
 
             {/* Processing Results Summary */}
             {processingResults && (
@@ -520,8 +517,7 @@ const StartNewProject = () => {
                           <ListItemText 
                             primary="WBS Generation"
                             secondary={`${processingResults.wbs.total_items} WBS items created`}
-                          />
-                        </ListItem>
+                          </ListItem>
                         
                         <ListItem sx={{ py: 1 }}>
                           <ListItemIcon>
@@ -579,7 +575,7 @@ const StartNewProject = () => {
   const steps = [
     {
       label: 'Upload Equipment List',
-      description: 'Upload your CSV file with equipment data',
+      description: 'Upload your CSV or Excel file with equipment data',
       icon: <CloudUpload />,
       optional: false
     },
