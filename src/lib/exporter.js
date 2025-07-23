@@ -79,8 +79,8 @@ const validateExportData = (data) => {
     throw new Error('Invalid or empty data for export');
   }
 
-  // Check for required fields
-  const requiredFields = ['wbs_code', 'wbs_name'];
+  // Check for required fields - ONLY the 3 columns we export
+  const requiredFields = ['wbs_code', 'wbs_name']; // parent_wbs_code can be empty for root items
   const missingFields = [];
 
   data.forEach((item, index) => {
@@ -110,28 +110,12 @@ const isValidWBSCode = (wbsCode) => {
 // Format data for P6 compatibility
 const formatDataForP6 = (data) => {
   return data.map(item => {
-    // Clean and format fields for P6
+    // Clean and format fields for P6 - ONLY the 3 required columns
     const formattedItem = {
       wbs_code: cleanWBSCode(item.wbs_code),
       parent_wbs_code: item.parent_wbs_code ? cleanWBSCode(item.parent_wbs_code) : '',
-      wbs_name: cleanWBSName(item.wbs_name),
-      equipment_number: cleanEquipmentNumber(item.equipment_number),
-      description: cleanDescription(item.description),
-      commissioning_status: cleanCommissioningStatus(item.commissioning_status)
+      wbs_name: cleanWBSName(item.wbs_name) // This should already be "equipment_code | description" format from WBS generator
     };
-
-    // Add optional fields if present
-    if (item.level !== undefined) {
-      formattedItem.level = item.level;
-    }
-
-    if (item.is_equipment !== undefined) {
-      formattedItem.is_equipment = item.is_equipment ? 'Y' : 'N';
-    }
-
-    if (item.is_new !== undefined) {
-      formattedItem.is_new = item.is_new ? 'Y' : 'N';
-    }
 
     return formattedItem;
   });
