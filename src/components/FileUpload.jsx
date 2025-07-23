@@ -58,7 +58,7 @@ const StyledButton = styled(Button)(({ theme }) => ({
 
 const FileUpload = ({ 
   uploadType, 
-  accept = '.csv,.xer',
+  accept = '.csv,.xlsx,.xls,.xer',
   title = 'Upload File',
   description = 'Click to browse or drag and drop your file here',
   maxSizeMB = 50,
@@ -99,6 +99,11 @@ const FileUpload = ({
         return;
       }
 
+      // Show warnings if any
+      if (validation.warnings.length > 0) {
+        console.warn('File upload warnings:', validation.warnings);
+      }
+
       // Upload and process file
       const result = await uploadFile(uploadType, file);
       
@@ -113,7 +118,7 @@ const FileUpload = ({
     }
   };
 
-  // Validate file before upload
+  // Enhanced file validation for CSV and Excel files
   const validateFile = (file) => {
     const validation = {
       isValid: true,
@@ -122,9 +127,25 @@ const FileUpload = ({
     };
 
     // Check file type
-    if (!fileHelpers.isValidFile(file)) {
-      validation.errors.push('Invalid file type. Please upload a CSV or XER file.');
+    const fileExtension = fileHelpers.getFileExtension(file.name).toLowerCase();
+    const supportedExtensions = ['csv', 'xlsx', 'xls', 'xer'];
+    
+    if (!supportedExtensions.includes(fileExtension)) {
+      validation.errors.push(`Invalid file type ".${fileExtension}". Please upload a CSV, Excel (.xlsx/.xls), or XER file.`);
       validation.isValid = false;
+    }
+
+    // Additional validation for specific file types
+    if (fileExtension === 'csv') {
+      // For CSV files, check if they might actually be Excel files
+      if (file.type === 'application/vnd.ms-excel' || 
+          file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+        validation.warnings.push('This appears to be an Excel file with .csv extension. Please use .xlsx extension for best results.');
+      }
+    }
+
+    if (fileExtension === 'xls') {
+      validation.warnings.push('Old Excel format (.xls) detected. For best compatibility, consider using .xlsx format.');
     }
 
     // Check file size
@@ -134,9 +155,19 @@ const FileUpload = ({
       validation.isValid = false;
     }
 
+    // Check for suspiciously small files
+    if (file.size < 100) {
+      validation.warnings.push('File seems very small. Please ensure it contains equipment data.');
+    }
+
     // Check file name
     if (file.name.length > 100) {
       validation.warnings.push('File name is very long and may be truncated.');
+    }
+
+    // Check for special characters in filename that might cause issues
+    if (/[<>:"/\\|?*]/.test(file.name)) {
+      validation.warnings.push('File name contains special characters that may cause issues.');
     }
 
     return validation;
@@ -213,6 +244,18 @@ const FileUpload = ({
     }
   };
 
+  // Get file type display name
+  const getFileTypeDisplay = (filename) => {
+    const extension = fileHelpers.getFileExtension(filename).toLowerCase();
+    switch (extension) {
+      case 'xlsx': return 'Excel';
+      case 'xls': return 'Excel (Legacy)';
+      case 'csv': return 'CSV';
+      case 'xer': return 'XER';
+      default: return extension.toUpperCase();
+    }
+  };
+
   return (
     <Box sx={{ width: '100%', mb: 3 }}>
       {/* Main upload area */}
@@ -267,7 +310,7 @@ const FileUpload = ({
 
           {/* File type info */}
           <Typography variant="caption" sx={{ color: BRAND_COLORS.text, opacity: 0.6 }}>
-            Supported formats: {accept} • Max size: {maxSizeMB}MB
+            Supported formats: CSV, Excel (.xlsx/.xls), XER • Max size: {maxSizeMB}MB
           </Typography>
         </Box>
       </StyledPaper>
@@ -309,7 +352,7 @@ const FileUpload = ({
                     {uploadState.file.name}
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    {(uploadState.file.size / 1024).toFixed(1)} KB • {fileHelpers.getFileExtension(uploadState.file.name).toUpperCase()}
+                    {(uploadState.file.size / 1024).toFixed(1)} KB • {getFileTypeDisplay(uploadState.file.name)}
                   </Typography>
                 </Box>
               </Box>
@@ -342,7 +385,7 @@ const FileUpload = ({
               sx={{ mb: 1 }}
               icon={<CheckCircle />}
             >
-              File processed successfully! Found {uploadState.validation.totalItems} items.
+              File processed successfully! Found {uploadState.validation.totalItems} equipment items.
             </Alert>
           )}
 
@@ -421,7 +464,8 @@ const FileUpload = ({
           <Alert severity="info" icon={<Info />}>
             <Typography variant="body2">
               <strong>Tips:</strong> Ensure your file has proper headers and equipment codes. 
-              CSV files should contain columns like 'equipment_number' and 'description'.
+              CSV and Excel files should contain columns like 'equipment_number', 'description', etc. 
+              Excel files (.xlsx) are recommended for best compatibility.
             </Typography>
           </Alert>
         </Box>
