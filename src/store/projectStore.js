@@ -133,56 +133,52 @@ const useProjectStore = create((set, get) => ({
     }
   })),
 
-  uploadFile: async (uploadType, file) => {
-    const { setFileUpload, setError, setLoading } = get();
-    
-    try {
-      setLoading(true);
-      setFileUpload(uploadType, { 
-        file, 
-        status: 'uploading', 
-        error: null 
-      });
+uploadFile: async (uploadType, file) => {
+  const { setFileUpload, setError, setLoading } = get();
+  
+  try {
+    setLoading(true);
+    setFileUpload(uploadType, { 
+      file, 
+      status: 'uploading', 
+      error: null 
+    });
 
-      // Validate file type
-      if (!fileHelpers.isValidFile(file)) {
-        throw new Error('Invalid file type. Please upload a CSV or XER file.');
-      }
-
-      // Read file
-      const content = await fileHelpers.readFileAsText(file);
-      
-      // Parse based on file type
-      let parsedData;
-      const fileExtension = fileHelpers.getFileExtension(file.name);
-      
-      if (fileExtension === 'csv') {
-        // Will be handled by specific parsers in lib files
-        parsedData = { raw: content, type: 'csv' };
-      } else if (fileExtension === 'xer') {
-        parsedData = { raw: content, type: 'xer' };
-      }
-
-      setFileUpload(uploadType, {
-        status: 'success',
-        data: parsedData,
-        error: null
-      });
-
-      setLoading(false);
-      return parsedData;
-
-    } catch (error) {
-      setFileUpload(uploadType, {
-        status: 'error',
-        error: error.message,
-        data: []
-      });
-      setError(`File upload failed: ${error.message}`);
-      setLoading(false);
-      throw error;
+    // Validate file
+    if (!file || typeof file.size !== 'number') {
+      throw new Error('Invalid file provided');
     }
-  },
+
+    if (!fileHelpers.isValidFile(file)) {
+      throw new Error('Invalid file type. Please upload a CSV file.');
+    }
+
+    // Read file content
+    const content = await fileHelpers.readFileAsText(file);
+    
+    // Simple data structure for now
+    const parsedData = { raw: content, type: 'csv' };
+
+    setFileUpload(uploadType, {
+      status: 'success',
+      data: parsedData,
+      error: null
+    });
+
+    setLoading(false);
+    return parsedData;
+
+  } catch (error) {
+    setFileUpload(uploadType, {
+      status: 'error',
+      error: error.message,
+      data: []
+    });
+    setError(`File upload failed: ${error.message}`);
+    setLoading(false);
+    throw error;
+  }
+},
 
   clearFileUpload: (uploadType) => set((state) => ({
     uploads: {
