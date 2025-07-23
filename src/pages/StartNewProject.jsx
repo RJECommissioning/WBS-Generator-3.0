@@ -114,12 +114,12 @@ const StartNewProject = () => {
   // Process the uploaded file
 // Replace your existing handleFileProcessed function with this corrected version:
 
-const handleFileProcessed = async (uploadResult) => {
+const handleProcessFile = async () => {
   try {
     setLoading(true);
     setProcessingStage('parsing', 10, 'Processing uploaded file...');
 
-    console.log('Upload result received:', uploadResult);
+    console.log('Processing uploaded file...');
 
     // Check if we have the uploaded file from the FileUpload component
     const uploadState = uploads['equipment_list'];
