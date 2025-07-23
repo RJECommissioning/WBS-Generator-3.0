@@ -47,6 +47,10 @@ const processEquipmentItem = (item) => {
     const description = item.description || '';
     const pluField = item.plu_field || '';
     
+    // Get parent equipment code from the actual column (KEY FIX!)
+    const parentEquipmentCode = item.parent_equipment_code || item.parent_equipment || null;
+    const cleanParentCode = parentEquipmentCode ? stringHelpers.cleanEquipmentCode(parentEquipmentCode) : null;
+    
     // Check commissioning status
     let commissioningStatus = (item.commissioning_status || 'Y').toString().toUpperCase();
     if (!['Y', 'N', 'TBC'].includes(commissioningStatus)) {
@@ -66,12 +70,11 @@ const processEquipmentItem = (item) => {
       };
     }
 
-    // Check if this is sub-equipment first
-    const isSubEquipment = patternHelpers.isSubEquipment(cleanCode);
-    const subEquipmentType = patternHelpers.getSubEquipmentType(cleanCode);
-    const baseEquipmentCode = patternHelpers.getBaseEquipmentCode(cleanCode);
+    // Determine if this is sub-equipment based on parent column (not pattern matching!)
+    const isSubEquipment = !!cleanParentCode;
+    const subEquipmentType = isSubEquipment ? patternHelpers.getSubEquipmentType(cleanCode) : null;
 
-    // Primary categorization
+    // Primary categorization - use the equipment code itself for pattern matching
     let category = null;
     let categoryName = '';
     let matchedPattern = null;
@@ -79,8 +82,7 @@ const processEquipmentItem = (item) => {
     // Try to match against main equipment patterns
     for (const [categoryCode, patterns] of Object.entries(EQUIPMENT_PATTERNS)) {
       const matchingPattern = patterns.find(pattern => 
-        patternHelpers.matchesPattern(cleanCode, pattern.pattern) ||
-        patternHelpers.matchesPattern(baseEquipmentCode, pattern.pattern)
+        patternHelpers.matchesPattern(cleanCode, pattern.pattern)
       );
 
       if (matchingPattern) {
@@ -88,6 +90,22 @@ const processEquipmentItem = (item) => {
         categoryName = EQUIPMENT_CATEGORIES[categoryCode];
         matchedPattern = matchingPattern;
         break;
+      }
+    }
+
+    // If no direct match and this is sub-equipment, try to match parent's pattern
+    if (!category && isSubEquipment && cleanParentCode) {
+      for (const [categoryCode, patterns] of Object.entries(EQUIPMENT_PATTERNS)) {
+        const matchingPattern = patterns.find(pattern => 
+          patternHelpers.matchesPattern(cleanParentCode, pattern.pattern)
+        );
+
+        if (matchingPattern) {
+          category = categoryCode;
+          categoryName = EQUIPMENT_CATEGORIES[categoryCode];
+          matchedPattern = matchingPattern;
+          break;
+        }
       }
     }
 
@@ -125,15 +143,14 @@ const processEquipmentItem = (item) => {
       category_name: categoryName,
       is_sub_equipment: isSubEquipment,
       sub_equipment_type: subEquipmentType,
-      parent_equipment: isSubEquipment ? baseEquipmentCode : null,
-      base_equipment_code: baseEquipmentCode,
+      parent_equipment: cleanParentCode, // Use actual parent from column
       matched_pattern: matchedPattern ? matchedPattern.name : null,
       processing_notes: []
     };
 
     // Add processing notes
     if (isSubEquipment) {
-      processedItem.processing_notes.push(`Sub-equipment of ${baseEquipmentCode}`);
+      processedItem.processing_notes.push(`Sub-equipment of ${cleanParentCode}`);
     }
     
     if (commissioningStatus === 'TBC') {
