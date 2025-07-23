@@ -112,108 +112,143 @@ const StartNewProject = () => {
   };
 
   // Process the uploaded file (button click calls this)
-  const handleProcessFile = async () => {
-    try {
-      setLoading(true);
-      setProcessingStage('parsing', 10, 'Processing uploaded file...');
+// Replace your handleProcessFile function with this debug version:
 
-      console.log('Starting file processing...');
+const handleProcessFile = async () => {
+  try {
+    setLoading(true);
+    setProcessingStage('parsing', 10, 'Processing uploaded file...');
 
-      // Get the uploaded file from the store
-      const uploadState = uploads['equipment_list'];
-      if (!uploadState || !uploadState.file) {
-        throw new Error('No file available for processing. Please upload a file first.');
-      }
+    console.log('Starting file processing...');
 
-      const file = uploadState.file;
-      console.log('Processing file:', file.name);
-
-      // Use the new parseFile function that handles both CSV and Excel
-      setProcessingStage('parsing', 30, 'Parsing file content...');
-      const parseResult = await parseFile(file);
-      
-      console.log('Parse result:', parseResult);
-
-      if (!parseResult || !parseResult.data || parseResult.data.length === 0) {
-        throw new Error('No valid equipment data found. Please check your file contains equipment information with proper column headers.');
-      }
-
-      const equipmentData = parseResult.data;
-      console.log(`Successfully parsed ${equipmentData.length} equipment items`);
-
-      setProcessingStage('categorizing_equipment', 50, 'Categorizing equipment...');
-
-      // Simple categorization for now (can be enhanced later)
-      const categorizedEquipment = equipmentData.map(item => ({
-        ...item,
-        category: '99',
-        category_name: 'Unrecognised Equipment',
-        is_sub_equipment: false,
-        parent_equipment: null
-      }));
-
-      setProcessingStage('generating_wbs', 70, 'Generating WBS structure...');
-
-      // Create basic WBS structure
-      const wbsStructure = [
-        {
-          wbs_code: '1',
-          parent_wbs_code: null,
-          wbs_name: 'Project Root',
-          level: 1,
-          color: '#C8D982',
-          is_equipment: false
-        },
-        ...categorizedEquipment.slice(0, 100).map((item, index) => ({
-          wbs_code: `1.${index + 1}`,
-          parent_wbs_code: '1',
-          wbs_name: `${item.equipment_number} | ${item.description}`,
-          equipment_number: item.equipment_number,
-          description: item.description,
-          commissioning_status: item.commissioning_status,
-          level: 2,
-          color: '#A8CC6B',
-          is_equipment: true
-        }))
-      ];
-
-      setProcessingStage('finalizing', 90, 'Building visualization...');
-
-      // Update store with results
-      updateEquipmentList(categorizedEquipment);
-      updateWBSStructure(wbsStructure);
-
-      // Store results for display
-      setProcessingResults({
-        equipment: {
-          equipment: categorizedEquipment,
-          total_processed: categorizedEquipment.length,
-          summary: {
-            processing_warnings: []
-          },
-          grouped: { '99': categorizedEquipment }
-        },
-        wbs: {
-          wbs_structure: wbsStructure,
-          total_items: wbsStructure.length,
-          max_level: 2
-        }
-      });
-
-      setProcessingStage('complete', 100, 'Project created successfully!');
-      setSuccess(`Successfully processed ${categorizedEquipment.length} equipment items from ${file.name}!`);
-      
-      // Move to next step
-      setActiveStep(1);
-
-    } catch (error) {
-      console.error('Processing error:', error);
-      setProcessingStage('error', 0, error.message);
-      setError(`Processing failed: ${error.message}`);
-    } finally {
-      setLoading(false);
+    // Get the uploaded file from the store
+    const uploadState = uploads['equipment_list'];
+    if (!uploadState || !uploadState.file) {
+      throw new Error('No file available for processing. Please upload a file first.');
     }
-  };
+
+    const file = uploadState.file;
+    console.log('Processing file:', file.name, 'Type:', file.type, 'Size:', file.size);
+
+    // Use the new parseFile function that handles both CSV and Excel
+    setProcessingStage('parsing', 30, 'Parsing file content...');
+    
+    const parseResult = await parseFile(file);
+    
+    console.log('Parse result:', parseResult);
+    console.log('Parse result details:', {
+      type: parseResult.type,
+      dataLength: parseResult.data ? parseResult.data.length : 'N/A',
+      originalHeadersLength: parseResult.originalHeaders ? parseResult.originalHeaders.length : 'N/A',
+      originalHeadersFirst10: parseResult.originalHeaders ? parseResult.originalHeaders.slice(0, 10) : 'N/A',
+      validation: parseResult.validation,
+      firstDataItem: parseResult.data && parseResult.data.length > 0 ? parseResult.data[0] : 'No data'
+    });
+
+    // Additional debugging: let's see what headers we got
+    if (parseResult.originalHeaders && parseResult.originalHeaders.length > 0) {
+      console.log('Headers found in file:', parseResult.originalHeaders);
+      
+      // Look for equipment-related columns
+      const equipmentHeaders = parseResult.originalHeaders.filter(header => 
+        typeof header === 'string' && 
+        (header.toLowerCase().includes('equipment') || 
+         header.toLowerCase().includes('tag') || 
+         header.toLowerCase().includes('description') ||
+         header.toLowerCase().includes('code'))
+      );
+      console.log('Equipment-related headers:', equipmentHeaders);
+    }
+
+    if (!parseResult || !parseResult.data || parseResult.data.length === 0) {
+      // More detailed error message
+      console.error('Parse result details:', {
+        hasResult: !!parseResult,
+        hasData: !!(parseResult && parseResult.data),
+        dataLength: parseResult && parseResult.data ? parseResult.data.length : 'N/A',
+        originalHeaders: parseResult && parseResult.originalHeaders ? parseResult.originalHeaders.length : 'N/A',
+        type: parseResult && parseResult.type
+      });
+      
+      throw new Error(`No valid equipment data found. File parsed ${parseResult.originalHeaders ? parseResult.originalHeaders.length : 0} headers but extracted ${parseResult.data ? parseResult.data.length : 0} equipment items. Please check your file contains equipment information with proper column headers (equipment_number, description, etc.).`);
+    }
+
+    const equipmentData = parseResult.data;
+    console.log(`Successfully parsed ${equipmentData.length} equipment items:`, equipmentData.slice(0, 3));
+
+    setProcessingStage('categorizing_equipment', 50, 'Categorizing equipment...');
+
+    // Simple categorization for now (can be enhanced later)
+    const categorizedEquipment = equipmentData.map(item => ({
+      ...item,
+      category: '99',
+      category_name: 'Unrecognised Equipment',
+      is_sub_equipment: false,
+      parent_equipment: null
+    }));
+
+    setProcessingStage('generating_wbs', 70, 'Generating WBS structure...');
+
+    // Create basic WBS structure
+    const wbsStructure = [
+      {
+        wbs_code: '1',
+        parent_wbs_code: null,
+        wbs_name: 'Project Root',
+        level: 1,
+        color: '#C8D982',
+        is_equipment: false
+      },
+      ...categorizedEquipment.slice(0, 100).map((item, index) => ({
+        wbs_code: `1.${index + 1}`,
+        parent_wbs_code: '1',
+        wbs_name: `${item.equipment_number} | ${item.description}`,
+        equipment_number: item.equipment_number,
+        description: item.description,
+        commissioning_status: item.commissioning_status,
+        level: 2,
+        color: '#A8CC6B',
+        is_equipment: true
+      }))
+    ];
+
+    setProcessingStage('finalizing', 90, 'Building visualization...');
+
+    // Update store with results
+    updateEquipmentList(categorizedEquipment);
+    updateWBSStructure(wbsStructure);
+
+    // Store results for display
+    setProcessingResults({
+      equipment: {
+        equipment: categorizedEquipment,
+        total_processed: categorizedEquipment.length,
+        summary: {
+          processing_warnings: []
+        },
+        grouped: { '99': categorizedEquipment }
+      },
+      wbs: {
+        wbs_structure: wbsStructure,
+        total_items: wbsStructure.length,
+        max_level: 2
+      }
+    });
+
+    setProcessingStage('complete', 100, 'Project created successfully!');
+    setSuccess(`Successfully processed ${categorizedEquipment.length} equipment items from ${file.name}!`);
+    
+    // Move to next step
+    setActiveStep(1);
+
+  } catch (error) {
+    console.error('Processing error:', error);
+    setProcessingStage('error', 0, error.message);
+    setError(`Processing failed: ${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Handle step navigation
   const handleNext = () => {
