@@ -147,19 +147,20 @@ const processEquipmentData = (equipment, originalHeaders) => {
         
         // Map common column variations to standard names
         const columnMappings = {
-          'equipment_number': ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id', 'asset_number', 'tag_number'],
-          'description': ['description', 'desc', 'equipment_description', 'name', 'title', 'equipment_name', 'asset_description'],
-          'plu_field': ['plu_field', 'plu', 'secondary_code', 'alt_code', 'alternative_code'],
-          'commissioning_status': ['commissioning_status', 'status', 'commissioning', 'comm_status', 'commission_status', 'included'],
-          'subsystem': ['subsystem', 'sub_system', 'system', 'sys'],
-          'location': ['location', 'area', 'zone'],
-          'category': ['category', 'cat', 'type', 'class'],
-          'parent': ['parent', 'parent_equipment', 'parent_code', 'parent_tag'],
-          'manufacturer': ['manufacturer', 'make', 'vendor', 'supplier'],
-          'model': ['model', 'model_number', 'part_number'],
-          'voltage': ['voltage', 'volt', 'kv', 'rated_voltage'],
-          'power': ['power', 'kw', 'mw', 'rating', 'capacity']
-        };
+         const columnMappings = {
+        'equipment_number': ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id', 'asset_number', 'tag_number'],
+        'description': ['description', 'desc', 'equipment_description', 'name', 'title', 'equipment_name', 'asset_description'],
+        'plu_field': ['plu_field', 'plu', 'secondary_code', 'alt_code', 'alternative_code'],
+        'commissioning_status': ['commissioning_status', 'status', 'commissioning', 'comm_status', 'commission_status', 'included'],
+        'parent_equipment_code': ['parent_equipment_code', 'parent_equipment', 'parent_code', 'parent_tag', 'parent', 'parent_equipment_number'], // KEY ADDITION!
+        'subsystem': ['subsystem', 'sub_system', 'system', 'sys'],
+        'location': ['location', 'area', 'zone'],
+        'category': ['category', 'cat', 'type', 'class'],
+        'manufacturer': ['manufacturer', 'make', 'vendor', 'supplier'],
+        'model': ['model', 'model_number', 'part_number'],
+        'voltage': ['voltage', 'volt', 'kv', 'rated_voltage'],
+        'power': ['power', 'kw', 'mw', 'rating', 'capacity']
+      };
 
         // Find matching columns for each standard field
         for (const [standardField, variations] of Object.entries(columnMappings)) {
