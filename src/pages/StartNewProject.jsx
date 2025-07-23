@@ -134,6 +134,19 @@ const handleProcessFile = async () => {
     setProcessingStage('parsing', 30, 'Parsing file content...');
     
     const parseResult = await parseFile(file);
+    if (parseResult.data && parseResult.data.length > 0) {
+  console.log('First equipment item keys:', Object.keys(parseResult.data[0]));
+  console.log('First 3 equipment items:', parseResult.data.slice(0, 3));
+  
+  // Check specifically for parent equipment columns
+  const firstItem = parseResult.data[0];
+  const parentColumns = Object.keys(firstItem).filter(key => 
+    key.toLowerCase().includes('parent') || 
+    key.toLowerCase().includes('equipment_code') ||
+    key.toLowerCase().includes('parent_equipment')
+  );
+  console.log('Potential parent equipment columns:', parentColumns);
+}
     
     console.log('Parse result:', parseResult);
     console.log('Parse result details:', {
