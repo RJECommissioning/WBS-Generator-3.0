@@ -106,39 +106,58 @@ const StartNewProject = () => {
 
   // Process equipment file after upload
 // Process equipment file after upload
+// Process equipment file after upload
   const handleFileProcessed = async (fileData) => {
     try {
       setLoading(true);
       setProcessingStage('parsing', 10, 'Processing uploaded file...');
 
-      // Get the raw content from the store
-      const uploadState = uploads.equipment_list;
-      
-      if (!uploadState.data || !uploadState.data.raw) {
-        throw new Error('No file data available');
+      console.log('File data received:', fileData); // Debug log
+
+      // Check if we have file data
+      if (!fileData || !fileData.raw) {
+        console.error('No file data available:', fileData);
+        throw new Error('No file data available - please try uploading again');
       }
 
       // Parse CSV using Papa Parse directly
+      console.log('Parsing CSV content...');
       const Papa = await import('papaparse');
-      const parseResult = Papa.default.parse(uploadState.data.raw, {
+      const parseResult = Papa.default.parse(fileData.raw, {
         header: true,
         dynamicTyping: true,
         skipEmptyLines: true,
         transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_')
       });
 
+      console.log('Parse result:', parseResult);
+
+      if (parseResult.errors.length > 0) {
+        console.warn('CSV parsing warnings:', parseResult.errors);
+      }
+
       // Clean and filter data
       const equipmentData = parseResult.data
-        .filter(item => item.equipment_number && item.equipment_number.toString().trim() !== '')
-        .map(item => ({
-          equipment_number: item.equipment_number.toString().trim().toUpperCase(),
-          description: item.description || '',
-          commissioning_status: item.commissioning_status || 'Y',
-          plu_field: item.plu_field || ''
-        }));
+        .filter(item => {
+          // Check if item has equipment_number in various formats
+          return item.equipment_number || item.equipment_no || item.equipment_code || item.code || item.equipment;
+        })
+        .map(item => {
+          // Normalize the equipment number field
+          const equipmentNumber = item.equipment_number || item.equipment_no || item.equipment_code || item.code || item.equipment;
+          return {
+            equipment_number: equipmentNumber ? equipmentNumber.toString().trim().toUpperCase() : '',
+            description: item.description || item.desc || '',
+            commissioning_status: item.commissioning_status || item.status || 'Y',
+            plu_field: item.plu_field || item.plu || ''
+          };
+        })
+        .filter(item => item.equipment_number !== ''); // Remove items with no equipment number
+
+      console.log(`Processed ${equipmentData.length} equipment items:`, equipmentData.slice(0, 3));
 
       if (equipmentData.length === 0) {
-        throw new Error('No valid equipment data found in file');
+        throw new Error('No valid equipment data found. Please check your CSV has an "equipment_number" column.');
       }
 
       setProcessingStage('categorizing_equipment', 30, 'Categorizing equipment...');
@@ -164,7 +183,7 @@ const StartNewProject = () => {
           color: '#C8D982',
           is_equipment: false
         },
-        ...categorizedEquipment.map((item, index) => ({
+        ...categorizedEquipment.slice(0, 10).map((item, index) => ({ // Limit to 10 items for testing
           wbs_code: `1.${index + 1}`,
           parent_wbs_code: '1',
           wbs_name: `${item.equipment_number} | ${item.description}`,
