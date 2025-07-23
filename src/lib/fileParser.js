@@ -156,6 +156,7 @@ const processEquipmentData = (equipment, originalHeaders) => {
         'subsystem': ['subsystem', 'sub_system', 'system', 'sys'],
         'location': ['location', 'area', 'zone'],
         'category': ['category', 'cat', 'type', 'class'],
+        'parent_equipment_code': ['parent_equipment_code', 'parent_equipment', 'parent_code', 'parent_tag', 'parent', 'parent_equipment_number'],
         'manufacturer': ['manufacturer', 'make', 'vendor', 'supplier'],
         'model': ['model', 'model_number', 'part_number'],
         'voltage': ['voltage', 'volt', 'kv', 'rated_voltage'],
