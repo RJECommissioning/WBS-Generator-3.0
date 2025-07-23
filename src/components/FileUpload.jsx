@@ -105,7 +105,20 @@ const FileUpload = ({
       }
 
       // Upload and process file
-      const result = await uploadFile(uploadType, file);
+      // Don't process the file here - just store it for later processing
+useProjectStore.setState(state => ({
+  uploads: {
+    ...state.uploads,
+    [uploadType]: {
+      file: file,
+      status: 'success',
+      error: null,
+      data: [],
+      validation: null
+    }
+  }
+}));
+const result = { file, status: 'success' };
       
       if (result && onFileProcessed) {
         onFileProcessed(result);
