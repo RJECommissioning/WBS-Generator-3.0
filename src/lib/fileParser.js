@@ -1,9 +1,75 @@
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { stringHelpers, validationHelpers } from '../utils';
 
 /**
- * File Parser - Handles CSV and XER file parsing
+ * File Parser - Handles CSV, Excel (.xlsx), and XER file parsing
  */
+
+// Excel Equipment List Parser
+export const parseExcelFile = (fileBuffer, filename) => {
+  return new Promise((resolve, reject) => {
+    try {
+      // Parse Excel workbook
+      const workbook = XLSX.read(fileBuffer, {
+        cellStyles: true,
+        cellFormulas: true,
+        cellDates: true,
+        cellNF: true,
+        sheetStubs: true
+      });
+
+      // Get first sheet (or find equipment sheet)
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+
+      // Convert to JSON with headers
+      const rawData = XLSX.utils.sheet_to_json(worksheet, { 
+        header: 1,
+        defval: '',
+        blankrows: false
+      });
+
+      if (rawData.length === 0) {
+        reject(new Error('Excel file appears to be empty'));
+        return;
+      }
+
+      // Get headers from first row and clean them
+      const headers = rawData[0].map(header => 
+        header.toString().trim().toLowerCase()
+          .replace(/\s+/g, '_')
+          .replace(/[^a-z0-9_]/g, '')
+      );
+
+      // Convert to object format
+      const equipment = rawData.slice(1)
+        .filter(row => row.some(cell => cell !== null && cell !== undefined && cell.toString().trim() !== ''))
+        .map(row => {
+          const item = {};
+          headers.forEach((header, index) => {
+            item[header] = row[index] || '';
+          });
+          return item;
+        });
+
+      // Filter out completely empty rows
+      const filteredEquipment = equipment.filter(item => {
+        return Object.values(item).some(value => 
+          value && value.toString().trim() !== ''
+        );
+      });
+
+      // Now process using the same logic as CSV parser
+      processEquipmentData(filteredEquipment, headers)
+        .then(resolve)
+        .catch(reject);
+
+    } catch (error) {
+      reject(new Error(`Excel parsing failed: ${error.message}`));
+    }
+  });
+};
 
 // CSV Equipment List Parser
 export const parseEquipmentList = (csvContent) => {
@@ -38,66 +104,14 @@ export const parseEquipmentList = (csvContent) => {
             
             // Remove empty rows
             equipment = equipment.filter(item => {
-              return item.equipment_number && 
-                     item.equipment_number.toString().trim() !== '';
+              return Object.values(item).some(value => 
+                value && value.toString().trim() !== ''
+              );
             });
 
-            // Normalize column names (handle variations)
-            equipment = equipment.map(item => {
-              const normalized = {};
-              
-              // Map common column variations to standard names
-              const columnMappings = {
-                'equipment_number': ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment'],
-                'description': ['description', 'desc', 'equipment_description', 'name'],
-                'plu_field': ['plu_field', 'plu', 'secondary_code', 'alt_code'],
-                'commissioning_status': ['commissioning_status', 'status', 'commissioning', 'comm_status'],
-                'subsystem': ['subsystem', 'sub_system', 'system'],
-                'location': ['location', 'area'],
-                'category': ['category', 'cat', 'type'],
-                'parent': ['parent', 'parent_equipment', 'parent_code']
-              };
-
-              // Find matching columns for each standard field
-              for (const [standardField, variations] of Object.entries(columnMappings)) {
-                const matchingKey = Object.keys(item).find(key => 
-                  variations.includes(key) || 
-                  variations.some(variation => key.includes(variation))
-                );
-                
-                if (matchingKey && item[matchingKey] !== undefined) {
-                  normalized[standardField] = item[matchingKey];
-                }
-              }
-
-              // Add any unmapped fields as-is
-              for (const [key, value] of Object.entries(item)) {
-                if (!Object.values(columnMappings).flat().includes(key)) {
-                  normalized[key] = value;
-                }
-              }
-
-              return normalized;
-            });
-
-            // Clean equipment numbers
-            equipment = equipment.map(item => ({
-              ...item,
-              equipment_number: stringHelpers.cleanEquipmentCode(item.equipment_number),
-              description: item.description || '',
-              commissioning_status: item.commissioning_status || 'Y'
-            }));
-
-            // Validate results
-            const validation = validationHelpers.validateEquipmentList(equipment);
-            
-            resolve({
-              data: equipment,
-              validation: validation,
-              totalItems: equipment.length,
-              originalHeaders: results.meta.fields || [],
-              errors: results.errors
-            });
+            processEquipmentData(equipment, results.meta.fields || [])
+              .then(resolve)
+              .catch(reject);
 
           } catch (processingError) {
             reject(new Error(`Error processing CSV data: ${processingError.message}`));
@@ -110,6 +124,91 @@ export const parseEquipmentList = (csvContent) => {
 
     } catch (error) {
       reject(new Error(`Failed to parse equipment list: ${error.message}`));
+    }
+  });
+};
+
+// Shared equipment data processing logic
+const processEquipmentData = (equipment, originalHeaders) => {
+  return new Promise((resolve, reject) => {
+    try {
+      // Remove empty rows
+      equipment = equipment.filter(item => {
+        // Look for any field that might be an equipment identifier
+        const possibleIds = ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id'];
+        return possibleIds.some(field => 
+          item[field] && item[field].toString().trim() !== ''
+        );
+      });
+
+      // Normalize column names (handle variations)
+      equipment = equipment.map(item => {
+        const normalized = {};
+        
+        // Map common column variations to standard names
+        const columnMappings = {
+          'equipment_number': ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id', 'asset_number', 'tag_number'],
+          'description': ['description', 'desc', 'equipment_description', 'name', 'title', 'equipment_name', 'asset_description'],
+          'plu_field': ['plu_field', 'plu', 'secondary_code', 'alt_code', 'alternative_code'],
+          'commissioning_status': ['commissioning_status', 'status', 'commissioning', 'comm_status', 'commission_status', 'included'],
+          'subsystem': ['subsystem', 'sub_system', 'system', 'sys'],
+          'location': ['location', 'area', 'zone'],
+          'category': ['category', 'cat', 'type', 'class'],
+          'parent': ['parent', 'parent_equipment', 'parent_code', 'parent_tag'],
+          'manufacturer': ['manufacturer', 'make', 'vendor', 'supplier'],
+          'model': ['model', 'model_number', 'part_number'],
+          'voltage': ['voltage', 'volt', 'kv', 'rated_voltage'],
+          'power': ['power', 'kw', 'mw', 'rating', 'capacity']
+        };
+
+        // Find matching columns for each standard field
+        for (const [standardField, variations] of Object.entries(columnMappings)) {
+          const matchingKey = Object.keys(item).find(key => 
+            variations.includes(key) || 
+            variations.some(variation => key.includes(variation))
+          );
+          
+          if (matchingKey && item[matchingKey] !== undefined) {
+            normalized[standardField] = item[matchingKey];
+          }
+        }
+
+        // Add any unmapped fields as-is
+        for (const [key, value] of Object.entries(item)) {
+          if (!Object.values(columnMappings).flat().includes(key)) {
+            normalized[key] = value;
+          }
+        }
+
+        return normalized;
+      });
+
+      // Clean equipment numbers and set defaults
+      equipment = equipment.map(item => ({
+        ...item,
+        equipment_number: stringHelpers.cleanEquipmentCode(item.equipment_number || ''),
+        description: item.description || '',
+        commissioning_status: item.commissioning_status || 'Y'
+      }));
+
+      // Filter out items without equipment numbers
+      equipment = equipment.filter(item => 
+        item.equipment_number && item.equipment_number.trim() !== ''
+      );
+
+      // Validate results
+      const validation = validationHelpers.validateEquipmentList(equipment);
+      
+      resolve({
+        data: equipment,
+        validation: validation,
+        totalItems: equipment.length,
+        originalHeaders: originalHeaders,
+        errors: []
+      });
+
+    } catch (processingError) {
+      reject(new Error(`Error processing equipment data: ${processingError.message}`));
     }
   });
 };
@@ -376,9 +475,26 @@ const buildWBSHierarchy = (wbsItems) => {
   return tree;
 };
 
-// Generic file type detector
-export const detectFileType = (filename, content) => {
+// Improved file type detector
+export const detectFileType = (filename, content, fileBuffer = null) => {
   const extension = filename.split('.').pop().toLowerCase();
+  
+  // Check for Excel files
+  if (extension === 'xlsx' || extension === 'xls') {
+    return 'excel_equipment_list';
+  }
+  
+  // Check if it's actually an Excel file disguised as CSV
+  if (fileBuffer && extension === 'csv') {
+    // Check for Excel file signatures
+    const uint8Array = new Uint8Array(fileBuffer.slice(0, 4));
+    const header = Array.from(uint8Array).map(b => String.fromCharCode(b)).join('');
+    
+    if (header === 'PK\x03\x04') {
+      // This is a ZIP file (Excel format)
+      return 'excel_equipment_list';
+    }
+  }
   
   if (extension === 'xer') {
     return 'xer';
@@ -402,7 +518,26 @@ export const detectFileType = (filename, content) => {
 // Main parser dispatcher
 export const parseFile = async (file) => {
   try {
-    // Read file content
+    // First, try to detect if this is an Excel file
+    const fileBuffer = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (e) => reject(e);
+      reader.readAsArrayBuffer(file);
+    });
+
+    // Detect file type using both filename and binary content
+    const fileType = detectFileType(file.name, '', fileBuffer);
+    
+    // Handle Excel files
+    if (fileType === 'excel_equipment_list') {
+      return {
+        type: 'equipment_list',
+        ...(await parseExcelFile(fileBuffer, file.name))
+      };
+    }
+
+    // For other files, read as text
     const content = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target.result);
@@ -410,11 +545,11 @@ export const parseFile = async (file) => {
       reader.readAsText(file);
     });
 
-    // Detect file type
-    const fileType = detectFileType(file.name, content);
+    // Re-detect file type with text content
+    const textFileType = detectFileType(file.name, content);
     
     // Parse based on type
-    switch (fileType) {
+    switch (textFileType) {
       case 'equipment_list':
         return {
           type: 'equipment_list',
@@ -434,7 +569,7 @@ export const parseFile = async (file) => {
         };
         
       default:
-        throw new Error(`Unsupported file type: ${fileType}`);
+        throw new Error(`Unsupported file type: ${textFileType}. Supported formats: CSV, Excel (.xlsx), XER`);
     }
 
   } catch (error) {
