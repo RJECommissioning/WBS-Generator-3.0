@@ -163,7 +163,7 @@ const processEquipmentData = (equipment, originalHeaders) => {
         'model': ['model', 'model_number', 'part_number'],
         'voltage': ['voltage', 'volt', 'kv', 'rated_voltage'],
         'power': ['power', 'kw', 'mw', 'rating', 'capacity']
-      };;
+     };
 
         // Find matching columns for each standard field
         for (const [standardField, variations] of Object.entries(columnMappings)) {
