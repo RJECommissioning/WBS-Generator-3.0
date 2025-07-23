@@ -125,17 +125,14 @@ export const INTERFACE_TESTING_PHASES = [
   'Phase 2'
 ];
 
-// Export format settings
+// Export format settings - CORRECTED to 3 columns only
 export const EXPORT_SETTINGS = {
   csv: {
     delimiter: ',',
     headers: [
       'wbs_code',
       'parent_wbs_code', 
-      'wbs_name',
-      'equipment_number',
-      'description',
-      'commissioning_status'
+      'wbs_name'
     ]
   },
   filename: {
