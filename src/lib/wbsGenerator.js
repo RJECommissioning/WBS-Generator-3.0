@@ -252,7 +252,7 @@ const addInterfaceTestingPhases = (wbsStructure, parentCode) => {
   });
 };
 
-// Add regular equipment items
+// Add regular equipment items with proper parent-child relationships
 const addEquipmentItems = (wbsStructure, equipment, parentCode) => {
   // Separate parent equipment from sub-equipment
   const parentEquipment = equipment.filter(item => !item.is_sub_equipment);
@@ -282,7 +282,7 @@ const addEquipmentItems = (wbsStructure, equipment, parentCode) => {
       is_new: false
     });
 
-    // Add sub-equipment for this parent
+    // Add sub-equipment for this specific parent (KEY IMPROVEMENT!)
     const relatedSubEquipment = subEquipment.filter(subItem => 
       subItem.parent_equipment === item.equipment_number
     );
@@ -291,9 +291,41 @@ const addEquipmentItems = (wbsStructure, equipment, parentCode) => {
       addSubEquipmentItems(wbsStructure, relatedSubEquipment, equipmentCode);
     }
   });
+
+  // Handle orphaned sub-equipment (sub-equipment without parents in this category)
+  const parentEquipmentNumbers = new Set(sortedParentEquipment.map(item => item.equipment_number));
+  const orphanedSubEquipment = subEquipment.filter(subItem => 
+    !parentEquipmentNumbers.has(subItem.parent_equipment)
+  );
+
+  if (orphanedSubEquipment.length > 0) {
+    console.warn(`Found ${orphanedSubEquipment.length} orphaned sub-equipment items in category`, orphanedSubEquipment.map(item => item.equipment_number));
+    
+    // Add orphaned sub-equipment as separate items
+    const startIndex = sortedParentEquipment.length;
+    orphanedSubEquipment.forEach((item, index) => {
+      const equipmentCode = stringHelpers.generateWBSCode(parentCode, startIndex + index + 1);
+      
+      wbsStructure.push({
+        wbs_code: equipmentCode,
+        parent_wbs_code: parentCode,
+        wbs_name: stringHelpers.formatEquipmentDescription(item.equipment_number, item.description),
+        equipment_number: item.equipment_number,
+        description: item.description,
+        commissioning_status: item.commissioning_status,
+        level: 4,
+        color: WBS_LEVEL_COLORS[4],
+        is_category: false,
+        is_equipment: true,
+        is_sub_equipment: true,
+        is_new: false,
+        processing_notes: [`Orphaned: Parent ${item.parent_equipment} not found in same category`]
+      });
+    });
+  }
 };
 
-// Add sub-equipment items (like -F, -KF devices)
+// Enhanced sub-equipment handling (UPDATED for proper hierarchy)
 const addSubEquipmentItems = (wbsStructure, subEquipment, parentCode) => {
   // Sort sub-equipment by equipment number
   const sortedSubEquipment = arrayHelpers.sortBy(subEquipment, [
@@ -305,12 +337,12 @@ const addSubEquipmentItems = (wbsStructure, subEquipment, parentCode) => {
     
     wbsStructure.push({
       wbs_code: subEquipmentCode,
-      parent_wbs_code: parentCode,
+      parent_wbs_code: parentCode, // This creates the proper parent-child relationship
       wbs_name: stringHelpers.formatEquipmentDescription(item.equipment_number, item.description),
       equipment_number: item.equipment_number,
       description: item.description,
       commissioning_status: item.commissioning_status,
-      level: 5,
+      level: 5, // One level deeper than parent equipment
       color: WBS_LEVEL_COLORS[5],
       is_category: false,
       is_equipment: true,
