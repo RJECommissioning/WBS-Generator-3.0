@@ -9,147 +9,602 @@ import {
 import { stringHelpers, wbsHelpers, arrayHelpers } from '../utils';
 
 /**
- * WBS Generator - Creates hierarchical WBS structure from categorized equipment
+ * WBS Generator - Enhanced with comprehensive fixes
+ * - ALL standard categories created (even empty ones)
+ * - Proper parent-child relationship nesting
+ * - 5-level hierarchy structure
+ * - Enhanced parent-child equipment handling
  */
 
-// Main WBS generation function
-export const generateWBSStructure = (categorizedEquipment, projectName = 'WBS Project') => {
+// Main WBS generation function - Enhanced with comprehensive fixes
+export const generateWBSStructure = (categorizedEquipment, projectName = '5737 Summerfield Project') => {
   try {
+    console.log('🏗️ STARTING ENHANCED WBS STRUCTURE GENERATION');
+    console.log(`📊 Input: ${categorizedEquipment?.length || 0} categorized equipment items`);
+
     if (!Array.isArray(categorizedEquipment) || categorizedEquipment.length === 0) {
-      throw new Error('No equipment provided for WBS generation');
+      console.log('⚠️ No equipment provided, creating empty WBS structure with all standard categories');
+      return generateEmptyWBSStructure(projectName);
     }
 
-    // Filter equipment for WBS inclusion (Y and TBC only)
-    const wbsEquipment = categorizedEquipment.filter(item => 
-      item.commissioning_status === 'Y' || item.commissioning_status === 'TBC'
-    );
+    // Use enhanced equipment data if available (from new processor)
+    let processedEquipmentData;
+    if (categorizedEquipment.categoryStats) {
+      // New format from enhanced processor
+      processedEquipmentData = categorizedEquipment;
+    } else {
+      // Legacy format - convert to new format
+      processedEquipmentData = convertLegacyFormat(categorizedEquipment);
+    }
 
-    // Separate TBC equipment for special handling
-    const confirmedEquipment = wbsEquipment.filter(item => item.commissioning_status === 'Y');
-    const tbcEquipment = wbsEquipment.filter(item => item.commissioning_status === 'TBC');
+    return generateEnhancedWBSStructure(processedEquipmentData, projectName);
 
-    // Group equipment by subsystem
-    const subsystemGroups = groupEquipmentBySubsystem(confirmedEquipment);
-    
-    // Build main WBS structure
-    const wbsStructure = [];
-    let wbsCodeCounter = 1;
+  } catch (error) {
+    console.error('❌ WBS generation failed:', error);
+    throw new Error(`WBS generation failed: ${error.message}`);
+  }
+};
 
-    // 1. Project Root
-    const projectRoot = {
-      wbs_code: wbsCodeCounter.toString(),
-      parent_wbs_code: null,
-      wbs_name: projectName,
-      equipment_number: null,
-      description: projectName,
-      commissioning_status: null,
-      level: 1,
-      color: WBS_LEVEL_COLORS[1],
-      is_category: false,
-      is_equipment: false,
-      is_new: false
-    };
-    wbsStructure.push(projectRoot);
-    
-    const rootCode = wbsCodeCounter.toString();
-    wbsCodeCounter++;
+// Enhanced WBS Structure Generation
+const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
+  console.log('🏗️ ENHANCED WBS STRUCTURE GENERATION');
+  console.log(`📊 Equipment data:`, {
+    totalEquipment: processedEquipmentData.equipment?.length || 0,
+    categories: Object.keys(processedEquipmentData.categoryStats || {}).length,
+    parentChildRelationships: processedEquipmentData.parentChildRelationships?.length || 0
+  });
 
-    // 2. Add Milestones section
-    const milestonesCode = stringHelpers.generateWBSCode(rootCode, wbsCodeCounter++);
-    wbsStructure.push({
-      wbs_code: milestonesCode,
-      parent_wbs_code: rootCode,
+  const wbsStructure = [];
+  let wbsCodeCounter = { level1: 1, level2: 1, level3: 1, level4: 1, level5: 1 };
+
+  // Step 1: Create Project Root Structure
+  console.log('🌳 STEP 1: Creating Project Root Structure');
+  
+  // Project Root (Level 1)
+  const projectRoot = {
+    wbs_code: '1',
+    parent_wbs_code: null,
+    wbs_name: projectName,
+    equipment_number: null,
+    description: projectName,
+    commissioning_status: null,
+    level: 1,
+    color: BRAND_COLORS.level1 || WBS_LEVEL_COLORS[1],
+    is_category: false,
+    is_equipment: false,
+    is_new: false
+  };
+  wbsStructure.push(projectRoot);
+
+  // Standard Level 2 Structure (Always present)
+  const standardLevel2 = [
+    {
+      wbs_code: '1.1',
+      parent_wbs_code: '1',
       wbs_name: 'M | Milestones',
       equipment_number: null,
       description: 'Project Milestones',
       commissioning_status: null,
       level: 2,
-      color: WBS_LEVEL_COLORS[2],
+      color: BRAND_COLORS.level2 || WBS_LEVEL_COLORS[2],
       is_category: true,
       is_equipment: false,
       is_new: false
-    });
-
-    // 3. Add Pre-requisites section
-    const prereqCode = stringHelpers.generateWBSCode(rootCode, wbsCodeCounter++);
-    wbsStructure.push({
-      wbs_code: prereqCode,
-      parent_wbs_code: rootCode,
+    },
+    {
+      wbs_code: '1.2',
+      parent_wbs_code: '1',
       wbs_name: 'P | Pre-requisites',
       equipment_number: null,
       description: 'Project Pre-requisites',
       commissioning_status: null,
       level: 2,
-      color: WBS_LEVEL_COLORS[2],
+      color: BRAND_COLORS.level2 || WBS_LEVEL_COLORS[2],
+      is_category: true,
+      is_equipment: false,
+      is_new: false
+    },
+    {
+      wbs_code: '1.3',
+      parent_wbs_code: '1',
+      wbs_name: 'S1 | Z01 | Main Subsystem',
+      equipment_number: null,
+      description: 'Main Subsystem',
+      commissioning_status: null,
+      level: 2,
+      color: BRAND_COLORS.level2 || WBS_LEVEL_COLORS[2],
+      is_category: true,
+      is_equipment: false,
+      is_new: false
+    }
+  ];
+
+  wbsStructure.push(...standardLevel2);
+  console.log(`✅ Created ${standardLevel2.length + 1} standard structure items`);
+
+  // Step 2: Create ALL Standard Categories (Level 3) - CRITICAL FIX
+  console.log('📂 STEP 2: Creating ALL Standard Categories (including empty ones)');
+  
+  const categoryWBSMap = new Map(); // Track category WBS codes
+  let categoryIndex = 1;
+
+  // Create ALL standard categories from EQUIPMENT_CATEGORIES - KEY FIX
+  Object.entries(EQUIPMENT_CATEGORIES).forEach(([categoryId, categoryName]) => {
+    const categoryWBSCode = `1.3.${categoryIndex}`;
+    const equipmentCount = processedEquipmentData.categoryStats?.[categoryId]?.count || 0;
+    
+    const categoryWBSItem = {
+      wbs_code: categoryWBSCode,
+      parent_wbs_code: '1.3',
+      wbs_name: `${categoryId} | ${categoryName}`,
+      equipment_number: null,
+      description: categoryName,
+      commissioning_status: null,
+      level: 3,
+      color: BRAND_COLORS.level3 || WBS_LEVEL_COLORS[3],
+      is_category: true,
+      is_equipment: false,
+      is_new: false,
+      category: categoryId,
+      equipment_count: equipmentCount
+    };
+
+    wbsStructure.push(categoryWBSItem);
+    categoryWBSMap.set(categoryId, categoryWBSCode);
+    
+    console.log(`   📁 Created category: ${categoryWBSCode} - ${categoryId} | ${categoryName} (${equipmentCount} items)`);
+    categoryIndex++;
+  });
+
+  console.log(`✅ Created ${Object.keys(EQUIPMENT_CATEGORIES).length} standard categories (including empty ones)`);
+
+  // Step 3: Add Equipment Items with Enhanced Parent-Child Relationships
+  console.log('🔧 STEP 3: Adding Equipment with Enhanced Parent-Child Relationships');
+  
+  // Process each category
+  Object.entries(processedEquipmentData.categoryStats || {}).forEach(([categoryId, categoryStats]) => {
+    if (categoryStats.count === 0) {
+      console.log(`   📂 Category ${categoryId} is empty - skipping equipment addition`);
+      return;
+    }
+
+    const categoryWBSCode = categoryWBSMap.get(categoryId);
+    console.log(`   🔧 Processing category ${categoryId}: ${categoryStats.count} items`);
+
+    // Handle special categories
+    if (categoryId === '01') {
+      // Preparations and set-up
+      addPreparationItems(wbsStructure, categoryWBSCode);
+    } else if (categoryId === '09') {
+      // Interface Testing
+      addInterfaceTestingPhases(wbsStructure, categoryWBSCode);
+    } else {
+      // Regular equipment items with enhanced parent-child handling
+      addEnhancedEquipmentItems(wbsStructure, categoryStats.equipment, categoryWBSCode, categoryId);
+    }
+  });
+
+  // Step 4: Add TBC Section if needed
+  const tbcEquipment = processedEquipmentData.equipment?.filter(item => item.commissioning_status === 'TBC') || [];
+  if (tbcEquipment.length > 0) {
+    console.log(`🔍 STEP 4: Adding TBC Section with ${tbcEquipment.length} items`);
+    
+    const tbcSectionCode = '1.4'; // Fixed position for TBC
+    wbsStructure.push({
+      wbs_code: tbcSectionCode,
+      parent_wbs_code: '1',
+      wbs_name: 'TBC - Equipment To Be Confirmed',
+      equipment_number: null,
+      description: 'Equipment with To Be Confirmed status',
+      commissioning_status: 'TBC',
+      level: 2,
+      color: BRAND_COLORS.level2 || WBS_LEVEL_COLORS[2],
       is_category: true,
       is_equipment: false,
       is_new: false
     });
 
-    // 4. Add Subsystem sections (S1, S2, etc.)
-    const subsystemCodes = {};
-    Object.keys(subsystemGroups).forEach(subsystemKey => {
-      const subsystemCode = stringHelpers.generateWBSCode(rootCode, wbsCodeCounter++);
-      subsystemCodes[subsystemKey] = subsystemCode;
-      
-      wbsStructure.push({
-        wbs_code: subsystemCode,
-        parent_wbs_code: rootCode,
-        wbs_name: `${subsystemKey} | ${getSubsystemName(subsystemKey)}`,
-        equipment_number: null,
-        description: `Subsystem ${subsystemKey}`,
-        commissioning_status: null,
-        level: 2,
-        color: WBS_LEVEL_COLORS[2],
-        is_category: true,
-        is_equipment: false,
-        is_new: false
-      });
+    addTBCEquipmentToWBS(wbsStructure, tbcEquipment, tbcSectionCode);
+  }
 
-      // Add equipment categories for this subsystem
-      const subsystemEquipment = subsystemGroups[subsystemKey];
-      addEquipmentCategoriesToWBS(wbsStructure, subsystemEquipment, subsystemCode);
-    });
+  // Step 5: Generate Summary Statistics
+  console.log('📊 STEP 5: WBS Generation Summary');
+  
+  const summary = {
+    total_wbs_items: wbsStructure.length,
+    levels: {
+      level1: wbsStructure.filter(item => item.level === 1).length,
+      level2: wbsStructure.filter(item => item.level === 2).length,
+      level3: wbsStructure.filter(item => item.level === 3).length,
+      level4: wbsStructure.filter(item => item.level === 4).length,
+      level5: wbsStructure.filter(item => item.level === 5).length
+    },
+    equipment_items: wbsStructure.filter(item => item.is_equipment).length,
+    structural_items: wbsStructure.filter(item => !item.is_equipment).length,
+    categories_with_equipment: wbsStructure.filter(item => item.level === 3 && (item.equipment_count || 0) > 0).length,
+    empty_categories: wbsStructure.filter(item => item.level === 3 && (item.equipment_count || 0) === 0).length,
+    parent_child_pairs: wbsStructure.filter(item => item.level === 5).length,
+    orphaned_items: wbsStructure.filter(item => item.is_orphaned).length
+  };
 
-    // 5. Add TBC section if there are TBC items
-    if (tbcEquipment.length > 0) {
-      const tbcSectionCode = stringHelpers.generateWBSCode(rootCode, 'X');
-      wbsStructure.push({
-        wbs_code: tbcSectionCode,
-        parent_wbs_code: rootCode,
-        wbs_name: 'TBC - Equipment To Be Confirmed',
-        equipment_number: null,
-        description: 'Equipment with To Be Confirmed status',
-        commissioning_status: 'TBC',
-        level: 2,
-        color: WBS_LEVEL_COLORS[2],
-        is_category: true,
-        is_equipment: false,
-        is_new: false
-      });
+  console.log('📈 WBS Structure Summary:');
+  console.log(`   🏗️ Total WBS Items: ${summary.total_wbs_items}`);
+  console.log(`   📊 Level Distribution: L1=${summary.levels.level1}, L2=${summary.levels.level2}, L3=${summary.levels.level3}, L4=${summary.levels.level4}, L5=${summary.levels.level5}`);
+  console.log(`   🔧 Equipment Items: ${summary.equipment_items}`);
+  console.log(`   🏢 Structural Items: ${summary.structural_items}`);
+  console.log(`   📂 Categories with Equipment: ${summary.categories_with_equipment}`);
+  console.log(`   📁 Empty Categories: ${summary.empty_categories}`);
+  console.log(`   👨‍👦 Parent-Child Pairs: ${summary.parent_child_pairs}`);
 
-      // Add TBC equipment
-      addTBCEquipmentToWBS(wbsStructure, tbcEquipment, tbcSectionCode);
-    }
+  // Step 6: Sort and validate WBS structure
+  const sortedWBS = sortWBSStructure(wbsStructure);
+  const validation = validateWBSStructure(sortedWBS);
 
-    // Sort WBS structure by code for consistency
-    const sortedWBS = arrayHelpers.sortBy(wbsStructure, [{ key: 'wbs_code', order: 'asc' }]);
+  if (validation.errors.length > 0) {
+    console.warn('⚠️ WBS validation warnings:', validation.errors.slice(0, 3));
+  }
 
-    return {
-      wbs_structure: sortedWBS,
-      total_items: sortedWBS.length,
-      equipment_count: confirmedEquipment.length,
-      tbc_count: tbcEquipment.length,
-      subsystem_count: Object.keys(subsystemGroups).length,
-      max_level: Math.max(...sortedWBS.map(item => item.level))
+  return {
+    wbs_structure: sortedWBS,
+    total_items: sortedWBS.length,
+    equipment_count: processedEquipmentData.totals?.final || processedEquipmentData.equipment?.length || 0,
+    tbc_count: tbcEquipment.length,
+    subsystem_count: 1,
+    max_level: Math.max(...sortedWBS.map(item => item.level)),
+    summary: summary,
+    validation: validation,
+    categoryWBSMap: Object.fromEntries(categoryWBSMap)
+  };
+};
+
+// Enhanced Equipment Items Addition with Proper Parent-Child Nesting
+const addEnhancedEquipmentItems = (wbsStructure, equipment, parentCode, categoryId) => {
+  console.log(`     🔧 Adding enhanced equipment for category ${categoryId}: ${equipment.length} items`);
+
+  // Separate parent equipment from sub-equipment
+  const parentEquipment = equipment.filter(item => !item.is_sub_equipment && !item.parent_equipment_code);
+  const subEquipment = equipment.filter(item => item.is_sub_equipment && item.parent_equipment_code);
+
+  console.log(`     👨‍👦 Category ${categoryId}: ${parentEquipment.length} parents, ${subEquipment.length} children`);
+
+  // Sort parent equipment for consistent ordering
+  const sortedParentEquipment = arrayHelpers.sortBy(parentEquipment, [
+    { key: 'equipment_number', order: 'asc' }
+  ]);
+
+  // Add parent equipment items (Level 4)
+  let equipmentIndex = 1;
+  const equipmentWBSMap = new Map(); // Track equipment WBS codes for parent-child linking
+
+  sortedParentEquipment.forEach(parentItem => {
+    const equipmentWBSCode = `${parentCode}.${equipmentIndex}`;
+    
+    // Add main equipment item
+    const equipmentWBSItem = {
+      wbs_code: equipmentWBSCode,
+      parent_wbs_code: parentCode,
+      wbs_name: stringHelpers.formatEquipmentDescription ? 
+        stringHelpers.formatEquipmentDescription(parentItem.equipment_number, parentItem.description) :
+        `${parentItem.equipment_number} | ${parentItem.description || 'Equipment Description'}`,
+      equipment_number: parentItem.equipment_number,
+      description: parentItem.description,
+      commissioning_status: parentItem.commissioning_status,
+      level: 4,
+      color: BRAND_COLORS.level4 || WBS_LEVEL_COLORS[4],
+      is_category: false,
+      is_equipment: true,
+      is_new: false,
+      parent_equipment_code: null,
+      has_children: subEquipment.some(child => child.parent_equipment_code === parentItem.equipment_number)
     };
 
-  } catch (error) {
-    throw new Error(`WBS generation failed: ${error.message}`);
+    wbsStructure.push(equipmentWBSItem);
+    equipmentWBSMap.set(parentItem.equipment_number, equipmentWBSCode);
+    
+    console.log(`       🔧 Added parent: ${equipmentWBSCode} - ${parentItem.equipment_number}`);
+    equipmentIndex++;
+  });
+
+  // Add child equipment under their parents (Level 5) - CRITICAL FIX for nesting
+  const processedChildren = new Set();
+  
+  sortedParentEquipment.forEach(parentItem => {
+    const parentWBSCode = equipmentWBSMap.get(parentItem.equipment_number);
+    const children = subEquipment.filter(child => child.parent_equipment_code === parentItem.equipment_number);
+    
+    if (children.length > 0) {
+      console.log(`       👶 Adding ${children.length} children for parent: ${parentItem.equipment_number}`);
+      
+      let childIndex = 1;
+      children.forEach(childItem => {
+        const childWBSCode = `${parentWBSCode}.${childIndex}`;
+        const childWBSItem = {
+          wbs_code: childWBSCode,
+          parent_wbs_code: parentWBSCode, // This creates proper parent-child nesting
+          wbs_name: stringHelpers.formatEquipmentDescription ? 
+            stringHelpers.formatEquipmentDescription(childItem.equipment_number, childItem.description) :
+            `${childItem.equipment_number} | ${childItem.description || 'Sub-Equipment Description'}`,
+          equipment_number: childItem.equipment_number,
+          description: childItem.description,
+          commissioning_status: childItem.commissioning_status,
+          level: 5, // One level deeper than parent equipment
+          color: BRAND_COLORS.level5 || WBS_LEVEL_COLORS[5],
+          is_category: false,
+          is_equipment: true,
+          is_sub_equipment: true,
+          is_new: false,
+          parent_equipment_code: childItem.parent_equipment_code,
+          has_children: false
+        };
+
+        wbsStructure.push(childWBSItem);
+        processedChildren.add(childItem.equipment_number);
+        
+        console.log(`         🔗 Added child: ${childWBSCode} - ${childItem.equipment_number} → parent: ${parentItem.equipment_number}`);
+        childIndex++;
+      });
+    }
+  });
+
+  // Handle orphaned children (children whose parents don't exist in the equipment list)
+  const orphanedChildren = subEquipment.filter(child => !processedChildren.has(child.equipment_number));
+  if (orphanedChildren.length > 0) {
+    console.log(`       ⚠️ Found ${orphanedChildren.length} orphaned children in category ${categoryId}`);
+    
+    orphanedChildren.forEach(orphanChild => {
+      const orphanWBSCode = `${parentCode}.${equipmentIndex}`;
+      const orphanWBSItem = {
+        wbs_code: orphanWBSCode,
+        parent_wbs_code: parentCode,
+        wbs_name: stringHelpers.formatEquipmentDescription ? 
+          stringHelpers.formatEquipmentDescription(orphanChild.equipment_number, orphanChild.description) :
+          `${orphanChild.equipment_number} | ${orphanChild.description || 'Orphaned Equipment'} [ORPHANED]`,
+        equipment_number: orphanChild.equipment_number,
+        description: orphanChild.description,
+        commissioning_status: orphanChild.commissioning_status,
+        level: 4,
+        color: BRAND_COLORS.level4 || WBS_LEVEL_COLORS[4],
+        is_category: false,
+        is_equipment: true,
+        is_sub_equipment: true,
+        is_new: false,
+        parent_equipment_code: orphanChild.parent_equipment_code,
+        has_children: false,
+        is_orphaned: true,
+        processing_notes: [`Orphaned: Parent ${orphanChild.parent_equipment_code} not found in same category`]
+      };
+
+      wbsStructure.push(orphanWBSItem);
+      console.log(`         ⚠️ Added orphaned child: ${orphanWBSCode} - ${orphanChild.equipment_number} (missing parent: ${orphanChild.parent_equipment_code})`);
+      equipmentIndex++;
+    });
   }
 };
 
-// Group equipment by subsystem (default S1 if not specified)
+// Add preparation items (Test bay, Panel Shop, Pad)
+const addPreparationItems = (wbsStructure, parentCode) => {
+  console.log(`     🔧 Adding preparation items to ${parentCode}`);
+  
+  PREPARATION_ITEMS.forEach((item, index) => {
+    const itemCode = `${parentCode}.${index + 1}`;
+    wbsStructure.push({
+      wbs_code: itemCode,
+      parent_wbs_code: parentCode,
+      wbs_name: item,
+      equipment_number: item.replace(/\s+/g, ''),
+      description: item,
+      commissioning_status: 'Y',
+      level: 4,
+      color: BRAND_COLORS.level4 || WBS_LEVEL_COLORS[4],
+      is_category: false,
+      is_equipment: true,
+      is_new: false
+    });
+    console.log(`       📋 Added preparation item: ${itemCode} - ${item}`);
+  });
+};
+
+// Add interface testing phases
+const addInterfaceTestingPhases = (wbsStructure, parentCode) => {
+  console.log(`     🔧 Adding interface testing phases to ${parentCode}`);
+  
+  INTERFACE_TESTING_PHASES.forEach((phase, index) => {
+    const phaseCode = `${parentCode}.${index + 1}`;
+    wbsStructure.push({
+      wbs_code: phaseCode,
+      parent_wbs_code: parentCode,
+      wbs_name: phase,
+      equipment_number: phase.replace(/\s+/g, ''),
+      description: phase,
+      commissioning_status: 'Y',
+      level: 4,
+      color: BRAND_COLORS.level4 || WBS_LEVEL_COLORS[4],
+      is_category: false,
+      is_equipment: true,
+      is_new: false
+    });
+    console.log(`       🧪 Added testing phase: ${phaseCode} - ${phase}`);
+  });
+};
+
+// Add TBC equipment to separate section
+const addTBCEquipmentToWBS = (wbsStructure, tbcEquipment, parentCode) => {
+  console.log(`     🔧 Adding ${tbcEquipment.length} TBC equipment items to ${parentCode}`);
+  
+  const sortedTBCEquipment = arrayHelpers.sortBy(tbcEquipment, [
+    { key: 'category', order: 'asc' },
+    { key: 'equipment_number', order: 'asc' }
+  ]);
+
+  sortedTBCEquipment.forEach((item, index) => {
+    const tbcCode = `${parentCode}.${index + 1}`;
+    
+    wbsStructure.push({
+      wbs_code: tbcCode,
+      parent_wbs_code: parentCode,
+      wbs_name: stringHelpers.formatEquipmentDescription ? 
+        stringHelpers.formatEquipmentDescription(item.equipment_number, item.description) :
+        `${item.equipment_number} | ${item.description || 'To Be Confirmed'}`,
+      equipment_number: item.equipment_number,
+      description: item.description,
+      commissioning_status: 'TBC',
+      level: 3,
+      color: BRAND_COLORS.level3 || WBS_LEVEL_COLORS[3],
+      is_category: false,
+      is_equipment: true,
+      is_new: false
+    });
+    console.log(`       ⏳ Added TBC item: ${tbcCode} - ${item.equipment_number}`);
+  });
+};
+
+// Convert legacy format to new format for compatibility
+const convertLegacyFormat = (categorizedEquipment) => {
+  console.log('🔄 Converting legacy equipment format');
+  
+  // Group equipment by category
+  const groupedEquipment = arrayHelpers.groupBy(categorizedEquipment, item => item.category || '99');
+  
+  // Create category stats
+  const categoryStats = {};
+  Object.entries(EQUIPMENT_CATEGORIES).forEach(([categoryId, categoryName]) => {
+    const equipmentInCategory = groupedEquipment[categoryId] || [];
+    categoryStats[categoryId] = {
+      name: categoryName,
+      count: equipmentInCategory.length,
+      equipment: equipmentInCategory,
+      parent_equipment: equipmentInCategory.filter(item => !item.is_sub_equipment),
+      child_equipment: equipmentInCategory.filter(item => item.is_sub_equipment)
+    };
+  });
+
+  // Create parent-child relationships
+  const parentChildRelationships = [];
+  categorizedEquipment.forEach(item => {
+    if (item.parent_equipment || item.parent_equipment_code) {
+      parentChildRelationships.push({
+        child: item.equipment_number,
+        parent: item.parent_equipment || item.parent_equipment_code,
+        child_category: item.category,
+        child_item: item
+      });
+    }
+  });
+
+  return {
+    equipment: categorizedEquipment,
+    categoryStats: categoryStats,
+    parentChildRelationships: parentChildRelationships,
+    totals: {
+      original: categorizedEquipment.length,
+      afterCommissioningFilter: categorizedEquipment.filter(item => (item.commissioning_status || 'Y') !== 'N').length,
+      final: categorizedEquipment.length,
+      parentItems: categorizedEquipment.filter(item => !item.is_sub_equipment).length,
+      childItems: categorizedEquipment.filter(item => item.is_sub_equipment).length
+    }
+  };
+};
+
+// Generate empty WBS structure with all categories
+const generateEmptyWBSStructure = (projectName) => {
+  console.log('📄 Generating empty WBS structure with all standard categories');
+  
+  const wbsStructure = [];
+  
+  // Project root
+  wbsStructure.push({
+    wbs_code: '1',
+    parent_wbs_code: null,
+    wbs_name: projectName,
+    level: 1,
+    color: BRAND_COLORS.level1 || WBS_LEVEL_COLORS[1],
+    is_equipment: false,
+    is_category: false
+  });
+
+  // Standard level 2 items
+  wbsStructure.push(
+    {
+      wbs_code: '1.1',
+      parent_wbs_code: '1',
+      wbs_name: 'M | Milestones',
+      level: 2,
+      color: BRAND_COLORS.level2 || WBS_LEVEL_COLORS[2],
+      is_equipment: false,
+      is_category: true
+    },
+    {
+      wbs_code: '1.2',
+      parent_wbs_code: '1',
+      wbs_name: 'P | Pre-requisites',
+      level: 2,
+      color: BRAND_COLORS.level2 || WBS_LEVEL_COLORS[2],
+      is_equipment: false,
+      is_category: true
+    },
+    {
+      wbs_code: '1.3',
+      parent_wbs_code: '1',
+      wbs_name: 'S1 | Z01 | Main Subsystem',
+      level: 2,
+      color: BRAND_COLORS.level2 || WBS_LEVEL_COLORS[2],
+      is_equipment: false,
+      is_category: true
+    }
+  );
+
+  // All standard categories (level 3) - even if empty
+  let categoryIndex = 1;
+  Object.entries(EQUIPMENT_CATEGORIES).forEach(([categoryId, categoryName]) => {
+    wbsStructure.push({
+      wbs_code: `1.3.${categoryIndex}`,
+      parent_wbs_code: '1.3',
+      wbs_name: `${categoryId} | ${categoryName}`,
+      level: 3,
+      color: BRAND_COLORS.level3 || WBS_LEVEL_COLORS[3],
+      is_equipment: false,
+      is_category: true,
+      category: categoryId,
+      equipment_count: 0
+    });
+    categoryIndex++;
+  });
+
+  return {
+    wbs_structure: wbsStructure,
+    total_items: wbsStructure.length,
+    equipment_count: 0,
+    tbc_count: 0,
+    subsystem_count: 1,
+    max_level: 3
+  };
+};
+
+// Sort WBS structure for proper hierarchy
+const sortWBSStructure = (wbsStructure) => {
+  return arrayHelpers.sortBy(wbsStructure, [
+    { key: 'wbs_code', order: 'asc', compareFn: compareWBSCodes }
+  ]);
+};
+
+// Custom WBS code comparison function
+const compareWBSCodes = (a, b) => {
+  const aParts = a.split('.').map(part => parseInt(part) || 0);
+  const bParts = b.split('.').map(part => parseInt(part) || 0);
+  
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aVal = aParts[i] || 0;
+    const bVal = bParts[i] || 0;
+    
+    if (aVal !== bVal) {
+      return aVal - bVal;
+    }
+  }
+  
+  return 0;
+};
+
+// Group equipment by subsystem (enhanced)
 const groupEquipmentBySubsystem = (equipment) => {
   const grouped = arrayHelpers.groupBy(equipment, item => {
     // Look for subsystem indicators in description or equipment code
@@ -168,214 +623,6 @@ const getSubsystemName = (subsystemKey) => {
     'Z02': 'Zone 02'
   };
   return subsystemNames[subsystemKey] || `${subsystemKey} Subsystem`;
-};
-
-// Add equipment categories to WBS structure
-const addEquipmentCategoriesToWBS = (wbsStructure, equipment, parentCode) => {
-  // Group equipment by category
-  const equipmentByCategory = arrayHelpers.groupBy(equipment, 'category');
-  
-  let categoryCounter = 1;
-  
-  // Process each category
-  Object.keys(equipmentByCategory).sort().forEach(categoryCode => {
-    const categoryEquipment = equipmentByCategory[categoryCode];
-    const categoryName = EQUIPMENT_CATEGORIES[categoryCode] || 'Unknown Category';
-    
-    // Add category node
-    const categoryWBSCode = stringHelpers.generateWBSCode(parentCode, categoryCounter++);
-    wbsStructure.push({
-      wbs_code: categoryWBSCode,
-      parent_wbs_code: parentCode,
-      wbs_name: `${categoryCode} | ${categoryName}`,
-      equipment_number: null,
-      description: categoryName,
-      commissioning_status: null,
-      level: 3,
-      color: WBS_LEVEL_COLORS[3],
-      is_category: true,
-      is_equipment: false,
-      is_new: false
-    });
-
-    // Handle special categories
-    if (categoryCode === '01') {
-      // Preparations and set-up
-      addPreparationItems(wbsStructure, categoryWBSCode);
-    } else if (categoryCode === '09') {
-      // Interface Testing
-      addInterfaceTestingPhases(wbsStructure, categoryWBSCode);
-    } else {
-      // Regular equipment items
-      addEquipmentItems(wbsStructure, categoryEquipment, categoryWBSCode);
-    }
-  });
-};
-
-// Add preparation items (Test bay, Panel Shop, Pad)
-const addPreparationItems = (wbsStructure, parentCode) => {
-  PREPARATION_ITEMS.forEach((item, index) => {
-    const itemCode = stringHelpers.generateWBSCode(parentCode, index + 1);
-    wbsStructure.push({
-      wbs_code: itemCode,
-      parent_wbs_code: parentCode,
-      wbs_name: item,
-      equipment_number: item.replace(/\s+/g, ''),
-      description: item,
-      commissioning_status: 'Y',
-      level: 4,
-      color: WBS_LEVEL_COLORS[4],
-      is_category: false,
-      is_equipment: true,
-      is_new: false
-    });
-  });
-};
-
-// Add interface testing phases
-const addInterfaceTestingPhases = (wbsStructure, parentCode) => {
-  INTERFACE_TESTING_PHASES.forEach((phase, index) => {
-    const phaseCode = stringHelpers.generateWBSCode(parentCode, index + 1);
-    wbsStructure.push({
-      wbs_code: phaseCode,
-      parent_wbs_code: parentCode,
-      wbs_name: phase,
-      equipment_number: phase.replace(/\s+/g, ''),
-      description: phase,
-      commissioning_status: 'Y',
-      level: 4,
-      color: WBS_LEVEL_COLORS[4],
-      is_category: false,
-      is_equipment: true,
-      is_new: false
-    });
-  });
-};
-
-// Add regular equipment items with proper parent-child relationships
-const addEquipmentItems = (wbsStructure, equipment, parentCode) => {
-  // Separate parent equipment from sub-equipment
-  const parentEquipment = equipment.filter(item => !item.is_sub_equipment);
-  const subEquipment = equipment.filter(item => item.is_sub_equipment);
-
-  // Sort parent equipment for consistent ordering
-  const sortedParentEquipment = arrayHelpers.sortBy(parentEquipment, [
-    { key: 'equipment_number', order: 'asc' }
-  ]);
-
-  // Add parent equipment items
-  sortedParentEquipment.forEach((item, index) => {
-    const equipmentCode = stringHelpers.generateWBSCode(parentCode, index + 1);
-    
-    // Add main equipment item
-    wbsStructure.push({
-      wbs_code: equipmentCode,
-      parent_wbs_code: parentCode,
-      wbs_name: stringHelpers.formatEquipmentDescription(item.equipment_number, item.description),
-      equipment_number: item.equipment_number,
-      description: item.description,
-      commissioning_status: item.commissioning_status,
-      level: 4,
-      color: WBS_LEVEL_COLORS[4],
-      is_category: false,
-      is_equipment: true,
-      is_new: false
-    });
-
-    // Add sub-equipment for this specific parent (KEY IMPROVEMENT!)
-    const relatedSubEquipment = subEquipment.filter(subItem => 
-      subItem.parent_equipment === item.equipment_number
-    );
-
-    if (relatedSubEquipment.length > 0) {
-      addSubEquipmentItems(wbsStructure, relatedSubEquipment, equipmentCode);
-    }
-  });
-
-  // Handle orphaned sub-equipment (sub-equipment without parents in this category)
-  const parentEquipmentNumbers = new Set(sortedParentEquipment.map(item => item.equipment_number));
-  const orphanedSubEquipment = subEquipment.filter(subItem => 
-    !parentEquipmentNumbers.has(subItem.parent_equipment)
-  );
-
-  if (orphanedSubEquipment.length > 0) {
-    console.warn(`Found ${orphanedSubEquipment.length} orphaned sub-equipment items in category`, orphanedSubEquipment.map(item => item.equipment_number));
-    
-    // Add orphaned sub-equipment as separate items
-    const startIndex = sortedParentEquipment.length;
-    orphanedSubEquipment.forEach((item, index) => {
-      const equipmentCode = stringHelpers.generateWBSCode(parentCode, startIndex + index + 1);
-      
-      wbsStructure.push({
-        wbs_code: equipmentCode,
-        parent_wbs_code: parentCode,
-        wbs_name: stringHelpers.formatEquipmentDescription(item.equipment_number, item.description),
-        equipment_number: item.equipment_number,
-        description: item.description,
-        commissioning_status: item.commissioning_status,
-        level: 4,
-        color: WBS_LEVEL_COLORS[4],
-        is_category: false,
-        is_equipment: true,
-        is_sub_equipment: true,
-        is_new: false,
-        processing_notes: [`Orphaned: Parent ${item.parent_equipment} not found in same category`]
-      });
-    });
-  }
-};
-
-// Enhanced sub-equipment handling (UPDATED for proper hierarchy)
-const addSubEquipmentItems = (wbsStructure, subEquipment, parentCode) => {
-  // Sort sub-equipment by equipment number
-  const sortedSubEquipment = arrayHelpers.sortBy(subEquipment, [
-    { key: 'equipment_number', order: 'asc' }
-  ]);
-
-  sortedSubEquipment.forEach((item, index) => {
-    const subEquipmentCode = stringHelpers.generateWBSCode(parentCode, index + 1);
-    
-    wbsStructure.push({
-      wbs_code: subEquipmentCode,
-      parent_wbs_code: parentCode, // This creates the proper parent-child relationship
-      wbs_name: stringHelpers.formatEquipmentDescription(item.equipment_number, item.description),
-      equipment_number: item.equipment_number,
-      description: item.description,
-      commissioning_status: item.commissioning_status,
-      level: 5, // One level deeper than parent equipment
-      color: WBS_LEVEL_COLORS[5],
-      is_category: false,
-      is_equipment: true,
-      is_sub_equipment: true,
-      is_new: false
-    });
-  });
-};
-
-// Add TBC equipment to separate section
-const addTBCEquipmentToWBS = (wbsStructure, tbcEquipment, parentCode) => {
-  const sortedTBCEquipment = arrayHelpers.sortBy(tbcEquipment, [
-    { key: 'category', order: 'asc' },
-    { key: 'equipment_number', order: 'asc' }
-  ]);
-
-  sortedTBCEquipment.forEach((item, index) => {
-    const tbcCode = stringHelpers.generateWBSCode(parentCode, index + 1);
-    
-    wbsStructure.push({
-      wbs_code: tbcCode,
-      parent_wbs_code: parentCode,
-      wbs_name: stringHelpers.formatEquipmentDescription(item.equipment_number, item.description),
-      equipment_number: item.equipment_number,
-      description: item.description,
-      commissioning_status: 'TBC',
-      level: 3,
-      color: WBS_LEVEL_COLORS[3],
-      is_category: false,
-      is_equipment: true,
-      is_new: false
-    });
-  });
 };
 
 // Generate WBS for Continue Project feature
@@ -436,8 +683,8 @@ const findOrCreateSubsystemForContinuation = (existingWBS, nextSequence) => {
   );
   
   if (existingSubsystem) {
-    const rootCode = stringHelpers.getParentWBSCode(existingSubsystem.wbs_code);
-    return stringHelpers.generateWBSCode(rootCode, nextSequence.split('.')[1]);
+    const rootCode = stringHelpers.getParentWBSCode ? stringHelpers.getParentWBSCode(existingSubsystem.wbs_code) : '1';
+    return stringHelpers.generateWBSCode ? stringHelpers.generateWBSCode(rootCode, nextSequence.split('.')[1]) : nextSequence;
   }
   
   return nextSequence;
@@ -446,14 +693,16 @@ const findOrCreateSubsystemForContinuation = (existingWBS, nextSequence) => {
 // Convert flat WBS to hierarchical tree for visualization
 export const buildWBSTree = (wbsStructure) => {
   try {
-    return wbsHelpers.buildHierarchicalTree(wbsStructure);
+    return wbsHelpers.buildHierarchicalTree ? wbsHelpers.buildHierarchicalTree(wbsStructure) : wbsStructure;
   } catch (error) {
     throw new Error(`Tree building failed: ${error.message}`);
   }
 };
 
-// Validate WBS structure
+// Enhanced WBS structure validation
 export const validateWBSStructure = (wbsStructure) => {
+  console.log('✅ VALIDATING WBS STRUCTURE');
+  
   const validation = {
     isValid: true,
     errors: [],
@@ -462,7 +711,10 @@ export const validateWBSStructure = (wbsStructure) => {
       total_items: wbsStructure.length,
       max_level: 0,
       orphaned_items: 0,
-      duplicate_codes: 0
+      duplicate_codes: 0,
+      unique_wbs_codes: new Set(wbsStructure.map(item => item.wbs_code)).size,
+      records_with_parents: wbsStructure.filter(item => item.parent_wbs_code && item.parent_wbs_code !== '').length,
+      root_records: wbsStructure.filter(item => !item.parent_wbs_code || item.parent_wbs_code === '').length
     }
   };
 
@@ -502,6 +754,33 @@ export const validateWBSStructure = (wbsStructure) => {
       validation.statistics.orphaned_items++;
     }
   });
+
+  // Check for required standard categories
+  const requiredCategories = Object.keys(EQUIPMENT_CATEGORIES);
+  const presentCategories = wbsStructure
+    .filter(item => item.level === 3 && item.category)
+    .map(item => item.category);
+  
+  requiredCategories.forEach(categoryId => {
+    if (!presentCategories.includes(categoryId)) {
+      validation.errors.push(`Missing required category: ${categoryId}`);
+    }
+  });
+
+  console.log('📊 WBS Validation Results:');
+  console.log(`   🆔 Unique WBS Codes: ${validation.statistics.unique_wbs_codes}/${validation.statistics.total_items}`);
+  console.log(`   📏 Max Level: ${validation.statistics.max_level}`);
+  console.log(`   🔗 Root Records: ${validation.statistics.root_records}`);
+  console.log(`   👨‍👦 Records with Parents: ${validation.statistics.records_with_parents}`);
+  console.log(`   ❌ Errors: ${validation.errors.length}`);
+  console.log(`   ⚠️ Warnings: ${validation.warnings.length}`);
+
+  if (validation.errors.length > 0) {
+    console.log('❌ WBS Validation Errors:');
+    validation.errors.slice(0, 5).forEach((error, index) => {
+      console.log(`   ${index + 1}. ${error}`);
+    });
+  }
 
   return validation;
 };
