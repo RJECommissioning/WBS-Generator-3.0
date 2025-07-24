@@ -345,7 +345,68 @@ const addEnhancedEquipmentItems = (wbsStructure, equipment, parentCode, category
       });
     }
   });
+// Add equipment categories to WBS structure for continue project functionality
+const addEquipmentCategoriesToWBS = (wbsItems, equipment, parentCode) => {
+  console.log('🔄 Adding equipment categories for project continuation');
+  console.log(`📊 Processing ${equipment.length} equipment items for parent: ${parentCode}`);
+  
+  if (!equipment || equipment.length === 0) {
+    console.log('⚠️ No equipment provided for categorization');
+    return;
+  }
 
+  // Use existing categorization logic to group equipment
+  const categorizedEquipment = {
+    equipment,
+    grouped: {},
+    total_processed: equipment.length
+  };
+
+  // Group equipment by category using existing logic
+  equipment.forEach(item => {
+    const category = item.category || '99';
+    if (!categorizedEquipment.grouped[category]) {
+      categorizedEquipment.grouped[category] = [];
+    }
+    categorizedEquipment.grouped[category].push(item);
+  });
+
+  // Generate WBS structure using existing function
+  const tempResult = generateWBSStructure(categorizedEquipment, 'Continue Project');
+  
+  console.log(`✅ Generated ${tempResult.wbs_structure.length} WBS items for continuation`);
+
+  // Adjust WBS codes to fit under the new parent subsystem
+  tempResult.wbs_structure.forEach((item, index) => {
+    // Calculate new WBS codes based on parent subsystem
+    const originalParts = item.wbs_code.split('.');
+    const newWBSCode = `${parentCode}.${originalParts.slice(-2).join('.')}`;
+    
+    let newParentCode = null;
+    if (item.parent_wbs_code) {
+      const parentParts = item.parent_wbs_code.split('.');
+      newParentCode = `${parentCode}.${parentParts.slice(-2).join('.')}`;
+    } else {
+      newParentCode = parentCode;
+    }
+
+    const adjustedItem = {
+      ...item,
+      wbs_code: newWBSCode,
+      parent_wbs_code: newParentCode,
+      level: (item.level || 0) + parentCode.split('.').length
+    };
+
+    wbsItems.push(adjustedItem);
+    
+    // Log first few items for debugging
+    if (index < 5) {
+      console.log(`   ${index + 1}. ${adjustedItem.wbs_code} | ${adjustedItem.wbs_name.substring(0, 40)}...`);
+    }
+  });
+
+  console.log(`✅ Successfully added ${wbsItems.length} items to WBS structure`);
+};
   // Handle orphaned children (children whose parents don't exist in the equipment list)
   const orphanedChildren = subEquipment.filter(child => !processedChildren.has(child.equipment_number));
   if (orphanedChildren.length > 0) {
