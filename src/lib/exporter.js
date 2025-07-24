@@ -346,7 +346,6 @@ const validateP6Export = (exportData) => {
 };
 
 // Enhanced data validation before processing
-export const validateExportRequest = (data, options) => {
   console.log('🔍 VALIDATING EXPORT REQUEST');
   
   const validation = {
