@@ -546,7 +546,7 @@ const downloadCSVFile = (csvContent, filename) => {
 };
 
 // Export equipment list (for debugging or separate use) - Enhanced
-export const exportEquipmentListToCSV = (equipmentList, options = {}) => {
+const exportEquipmentListToCSV = (equipmentList, options = {}) => {
   try {
     console.log('📤 EXPORTING EQUIPMENT LIST');
     
