@@ -715,3 +715,6 @@ export const getExportStatistics = (data, options = {}) => {
   console.log('📈 Export Statistics:', stats);
   return stats;
 };
+
+  export { formatDataForP6, validateExportRequest, exportEquipmentListToCSV, exportComparisonToCSV, getExportStatistics };
+
