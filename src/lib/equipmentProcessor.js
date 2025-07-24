@@ -2,44 +2,276 @@ import { EQUIPMENT_PATTERNS, SUB_EQUIPMENT_PATTERNS, EQUIPMENT_CATEGORIES, COMMI
 import { stringHelpers, patternHelpers, arrayHelpers } from '../utils';
 
 /**
- * Equipment Processor - Categorizes equipment according to WBS patterns
+ * Equipment Processor - Enhanced with comprehensive fixes
+ * - Proper commissioning status filtering (N status completely excluded)
+ * - Enhanced parent-child relationship handling
+ * - All standard categories created (even empty ones)
+ * - Improved pattern matching and categorization
  */
 
-// Main equipment categorization function
+// Main equipment categorization function - Enhanced with comprehensive filtering
 export const categorizeEquipment = (equipmentList) => {
   try {
+    console.log('🔍 STARTING ENHANCED EQUIPMENT CATEGORIZATION');
+    console.log(`📊 Input: ${equipmentList?.length || 0} raw equipment items`);
+
     if (!Array.isArray(equipmentList) || equipmentList.length === 0) {
       throw new Error('Invalid equipment list provided');
     }
 
-    // Process each equipment item
-    const categorizedEquipment = equipmentList.map(item => {
-      const processedItem = processEquipmentItem(item);
-      return processedItem;
+    // PHASE 1: Enhanced Equipment Processing with Proper Filtering
+    const processedData = processEquipmentList(equipmentList);
+
+    console.log('✅ Equipment categorization completed:', {
+      original: processedData.totals.original,
+      afterCommissioningFilter: processedData.totals.afterCommissioningFilter,
+      final: processedData.totals.final,
+      parentItems: processedData.totals.parentItems,
+      childItems: processedData.totals.childItems,
+      categories: Object.keys(processedData.categoryStats).length
     });
 
-    // Group by category for analysis
-    const groupedByCategory = arrayHelpers.groupBy(categorizedEquipment, 'category');
-    
-    // Build parent-child relationships for sub-equipment
-    const equipmentWithRelationships = buildEquipmentRelationships(categorizedEquipment);
+    // Build enhanced grouped structure for compatibility
+    const groupedByCategory = {};
+    Object.entries(processedData.categoryStats).forEach(([categoryId, stats]) => {
+      groupedByCategory[categoryId] = stats.equipment;
+    });
 
-    // Generate processing summary
-    const summary = generateProcessingSummary(equipmentWithRelationships);
+    // Generate enhanced processing summary
+    const summary = generateProcessingSummary(processedData);
 
     return {
-      equipment: equipmentWithRelationships,
+      equipment: processedData.equipment,
       grouped: groupedByCategory,
       summary: summary,
-      total_processed: equipmentWithRelationships.length
+      total_processed: processedData.totals.final,
+      categoryStats: processedData.categoryStats,
+      parentChildRelationships: processedData.parentChildRelationships,
+      totals: processedData.totals
     };
 
   } catch (error) {
+    console.error('❌ Equipment categorization failed:', error);
     throw new Error(`Equipment categorization failed: ${error.message}`);
   }
 };
 
-// Process individual equipment item
+// Enhanced Equipment Processing with Comprehensive Filtering
+const processEquipmentList = (rawEquipmentList) => {
+  console.log('🔍 ENHANCED EQUIPMENT PROCESSING');
+  console.log(`📊 Input: ${rawEquipmentList.length} raw equipment items`);
+
+  // Step 1: Filter by commissioning status FIRST - CRITICAL FIX
+  console.log('⚡ STEP 1: Commissioning Status Filtering');
+  const filteredByCommissioning = rawEquipmentList.filter(item => {
+    const status = (item.commissioning_status || 'Y').toString().toUpperCase().trim();
+    const shouldInclude = status === 'Y' || status === 'TBC';
+    
+    if (!shouldInclude && status === 'N') {
+      console.log(`❌ Filtering out: ${item.equipment_number || 'NO_CODE'} (Status: ${status})`);
+    }
+    
+    return shouldInclude;
+  });
+
+  console.log(`📊 After commissioning filter: ${filteredByCommissioning.length} items (filtered out ${rawEquipmentList.length - filteredByCommissioning.length} items with status N)`);
+
+  // Step 2: Clean and validate equipment numbers
+  console.log('🧹 STEP 2: Equipment Number Validation');
+  const cleanedEquipment = filteredByCommissioning
+    .map(item => ({
+      ...item,
+      equipment_number: stringHelpers.cleanEquipmentCode(item.equipment_number || ''),
+      parent_equipment_code: item.parent_equipment_code 
+        ? stringHelpers.cleanEquipmentCode(item.parent_equipment_code) 
+        : null
+    }))
+    .filter(item => {
+      const hasValidEquipmentNumber = item.equipment_number && item.equipment_number.trim() !== '';
+      if (!hasValidEquipmentNumber) {
+        console.log(`⚠️ Filtering out item with invalid equipment number:`, item);
+      }
+      return hasValidEquipmentNumber;
+    });
+
+  console.log(`📊 After validation: ${cleanedEquipment.length} items with valid equipment numbers`);
+
+  // Step 3: Enhanced categorization with pattern matching
+  console.log('🏷️ STEP 3: Enhanced Equipment Categorization');
+  const categorizedEquipment = cleanedEquipment.map((item, index) => {
+    const category = determineEquipmentCategory(item.equipment_number);
+    const categoryInfo = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
+    
+    const processedItem = {
+      ...item,
+      category: category,
+      category_name: categoryInfo,
+      is_sub_equipment: !!item.parent_equipment_code,
+      parent_equipment: item.parent_equipment_code,
+      level: item.parent_equipment_code ? 'child' : 'parent',
+      commissioning_status: (item.commissioning_status || 'Y').toString().toUpperCase().trim(),
+      description: item.description || '',
+      plu_field: item.plu_field || '',
+      processing_notes: [],
+      debug_info: {
+        original_index: index,
+        pattern_matched: category !== '99',
+        has_parent: !!item.parent_equipment_code,
+        category_source: category
+      }
+    };
+
+    // Add processing notes
+    if (processedItem.is_sub_equipment) {
+      processedItem.processing_notes.push(`Sub-equipment of ${item.parent_equipment_code}`);
+    }
+    
+    if (processedItem.commissioning_status === 'TBC') {
+      processedItem.processing_notes.push('To Be Confirmed - will be placed in TBC section');
+    }
+
+    if (category === '99') {
+      processedItem.processing_notes.push('No pattern match found - categorized as Unrecognised');
+    }
+
+    if (index < 20) { // Log first 20 for debugging
+      console.log(`   ${index + 1}. ${item.equipment_number} → Category: ${category} (${categoryInfo}) ${item.parent_equipment_code ? `[Child of: ${item.parent_equipment_code}]` : '[Parent]'}`);
+    }
+
+    return processedItem;
+  });
+
+  // Step 4: Build parent-child relationships
+  console.log('👨‍👦 STEP 4: Building Parent-Child Relationships');
+  const equipmentMap = new Map();
+  const parentChildRelationships = [];
+
+  // Create equipment lookup map
+  categorizedEquipment.forEach(item => {
+    equipmentMap.set(item.equipment_number, item);
+    
+    if (item.parent_equipment_code) {
+      parentChildRelationships.push({
+        child: item.equipment_number,
+        parent: item.parent_equipment_code,
+        child_category: item.category,
+        child_item: item
+      });
+    }
+  });
+
+  console.log(`🔗 Found ${parentChildRelationships.length} parent-child relationships:`);
+  parentChildRelationships.slice(0, 10).forEach(rel => {
+    const parentExists = equipmentMap.has(rel.parent);
+    console.log(`   ${rel.child} → ${rel.parent} ${parentExists ? '✅' : '❌ (parent not found)'}`);
+  });
+
+  // Step 5: Generate category statistics - INCLUDES ALL STANDARD CATEGORIES
+  console.log('📊 STEP 5: Category Statistics (All Standard Categories)');
+  const categoryStats = {};
+  
+  // Initialize ALL standard categories (including empty ones) - CRITICAL FIX
+  Object.entries(EQUIPMENT_CATEGORIES).forEach(([categoryId, categoryName]) => {
+    categoryStats[categoryId] = {
+      name: categoryName,
+      count: 0,
+      equipment: [],
+      parent_equipment: [],
+      child_equipment: []
+    };
+  });
+
+  // Populate category statistics
+  categorizedEquipment.forEach(item => {
+    const category = item.category || '99';
+    if (categoryStats[category]) {
+      categoryStats[category].count++;
+      categoryStats[category].equipment.push(item);
+      
+      if (item.parent_equipment_code) {
+        categoryStats[category].child_equipment.push(item);
+      } else {
+        categoryStats[category].parent_equipment.push(item);
+      }
+    }
+  });
+
+  console.log('📈 Category Statistics Summary (All Categories Including Empty):');
+  Object.entries(categoryStats).forEach(([categoryId, stats]) => {
+    console.log(`   ${categoryId} | ${stats.name}: ${stats.count} items (${stats.parent_equipment.length} parents, ${stats.child_equipment.length} children)`);
+  });
+
+  return {
+    equipment: categorizedEquipment,
+    categoryStats: categoryStats,
+    parentChildRelationships: parentChildRelationships,
+    equipmentMap: equipmentMap,
+    totals: {
+      original: rawEquipmentList.length,
+      afterCommissioningFilter: filteredByCommissioning.length,
+      afterValidation: cleanedEquipment.length,
+      final: categorizedEquipment.length,
+      parentItems: categorizedEquipment.filter(item => !item.parent_equipment_code).length,
+      childItems: categorizedEquipment.filter(item => item.parent_equipment_code).length
+    }
+  };
+};
+
+// Enhanced Equipment Categorization Function
+const determineEquipmentCategory = (equipmentNumber) => {
+  if (!equipmentNumber || equipmentNumber.trim() === '') {
+    return '99';
+  }
+
+  const cleanedNumber = equipmentNumber.toUpperCase().trim();
+  
+  // Test against all equipment patterns with enhanced matching
+  for (const [categoryId, patterns] of Object.entries(EQUIPMENT_PATTERNS)) {
+    for (const pattern of patterns) {
+      const patternString = pattern.pattern || pattern;
+      
+      // Enhanced pattern matching
+      if (testPatternMatch(cleanedNumber, patternString)) {
+        console.log(`🎯 Pattern match: ${cleanedNumber} matches ${patternString} → Category ${categoryId}`);
+        return categoryId;
+      }
+    }
+  }
+
+  console.log(`❌ No pattern match for: ${cleanedNumber}`);
+  return '99'; // Unrecognized equipment
+};
+
+// Enhanced Pattern Matching Function
+const testPatternMatch = (equipmentNumber, pattern) => {
+  const cleanPattern = pattern.toUpperCase().trim();
+  
+  // Direct prefix match (most common)
+  if (equipmentNumber.startsWith(cleanPattern)) {
+    return true;
+  }
+  
+  // Exact match
+  if (equipmentNumber === cleanPattern) {
+    return true;
+  }
+  
+  // Pattern matching using existing pattern helpers
+  if (patternHelpers && patternHelpers.matchesPattern) {
+    return patternHelpers.matchesPattern(equipmentNumber, pattern);
+  }
+  
+  // Fallback pattern matching
+  if (cleanPattern.includes('X')) {
+    const regexPattern = cleanPattern.replace(/X+/g, '\\d+').replace(/\+/g, '\\+');
+    const regex = new RegExp(`^${regexPattern}`, 'i');
+    return regex.test(equipmentNumber);
+  }
+  
+  return false;
+};
+
+// Process individual equipment item - Enhanced version
 const processEquipmentItem = (item) => {
   try {
     // Clean and normalize equipment code
@@ -57,17 +289,9 @@ const processEquipmentItem = (item) => {
       commissioningStatus = 'Y'; // Default to Yes if invalid
     }
 
-    // Skip items marked as 'N' (No commissioning)
+    // Skip items marked as 'N' (No commissioning) - CRITICAL FIX
     if (commissioningStatus === 'N') {
-      return {
-        ...item,
-        equipment_number: cleanCode,
-        category: null,
-        category_name: 'Excluded (Not Commissioned)',
-        is_sub_equipment: false,
-        parent_equipment: null,
-        processing_notes: ['Excluded - Commissioning Status: N']
-      };
+      return null; // Return null to filter out completely
     }
 
     // Determine if this is sub-equipment based on parent column (not pattern matching!)
@@ -82,7 +306,7 @@ const processEquipmentItem = (item) => {
     // Try to match against main equipment patterns
     for (const [categoryCode, patterns] of Object.entries(EQUIPMENT_PATTERNS)) {
       const matchingPattern = patterns.find(pattern => 
-        patternHelpers.matchesPattern(cleanCode, pattern.pattern)
+        patternHelpers.matchesPattern(cleanCode, pattern.pattern || pattern)
       );
 
       if (matchingPattern) {
@@ -97,7 +321,7 @@ const processEquipmentItem = (item) => {
     if (!category && isSubEquipment && cleanParentCode) {
       for (const [categoryCode, patterns] of Object.entries(EQUIPMENT_PATTERNS)) {
         const matchingPattern = patterns.find(pattern => 
-          patternHelpers.matchesPattern(cleanParentCode, pattern.pattern)
+          patternHelpers.matchesPattern(cleanParentCode, pattern.pattern || pattern)
         );
 
         if (matchingPattern) {
@@ -114,7 +338,7 @@ const processEquipmentItem = (item) => {
       const cleanPLU = stringHelpers.cleanEquipmentCode(pluField);
       for (const [categoryCode, patterns] of Object.entries(EQUIPMENT_PATTERNS)) {
         const matchingPattern = patterns.find(pattern => 
-          patternHelpers.matchesPattern(cleanPLU, pattern.pattern)
+          patternHelpers.matchesPattern(cleanPLU, pattern.pattern || pattern)
         );
 
         if (matchingPattern) {
@@ -144,7 +368,7 @@ const processEquipmentItem = (item) => {
       is_sub_equipment: isSubEquipment,
       sub_equipment_type: subEquipmentType,
       parent_equipment: cleanParentCode, // Use actual parent from column
-      matched_pattern: matchedPattern ? matchedPattern.name : null,
+      matched_pattern: matchedPattern ? (matchedPattern.name || matchedPattern.pattern) : null,
       processing_notes: []
     };
 
@@ -205,14 +429,12 @@ const handleSpecialCases = (equipmentCode, description) => {
   return '99';
 };
 
-// Build parent-child relationships for sub-equipment
+// Build parent-child relationships for sub-equipment - Enhanced
 const buildEquipmentRelationships = (equipmentList) => {
   // Create lookup map for parent equipment
   const equipmentMap = {};
   equipmentList.forEach(item => {
-    if (!item.is_sub_equipment) {
-      equipmentMap[item.equipment_number] = item;
-    }
+    equipmentMap[item.equipment_number] = item;
   });
 
   // Process sub-equipment and link to parents
@@ -239,53 +461,41 @@ const buildEquipmentRelationships = (equipmentList) => {
   });
 };
 
-// Generate processing summary
-const generateProcessingSummary = (equipment) => {
+// Generate enhanced processing summary
+const generateProcessingSummary = (processedData) => {
   const summary = {
-    total_equipment: equipment.length,
+    total_equipment: processedData.totals.final,
     by_category: {},
     by_commissioning_status: {},
-    sub_equipment_count: 0,
-    parent_equipment_count: 0,
+    sub_equipment_count: processedData.totals.childItems,
+    parent_equipment_count: processedData.totals.parentItems,
     unrecognised_count: 0,
     tbc_count: 0,
-    excluded_count: 0,
-    processing_warnings: []
+    excluded_count: processedData.totals.original - processedData.totals.afterCommissioningFilter,
+    processing_warnings: [],
+    totals: processedData.totals
   };
 
-  equipment.forEach(item => {
-    // Count by category
-    if (!summary.by_category[item.category]) {
-      summary.by_category[item.category] = {
-        count: 0,
-        category_name: item.category_name,
-        items: []
-      };
-    }
-    summary.by_category[item.category].count++;
-    summary.by_category[item.category].items.push(item.equipment_number);
+  // Process category statistics
+  Object.entries(processedData.categoryStats).forEach(([categoryId, stats]) => {
+    summary.by_category[categoryId] = {
+      count: stats.count,
+      category_name: stats.name,
+      items: stats.equipment.map(item => item.equipment_number)
+    };
 
-    // Count by commissioning status
+    if (categoryId === '99') {
+      summary.unrecognised_count = stats.count;
+    }
+  });
+
+  // Process commissioning status
+  processedData.equipment.forEach(item => {
     const status = item.commissioning_status || 'Unknown';
     summary.by_commissioning_status[status] = (summary.by_commissioning_status[status] || 0) + 1;
 
-    // Special counts
-    if (item.is_sub_equipment) {
-      summary.sub_equipment_count++;
-    } else {
-      summary.parent_equipment_count++;
-    }
-
-    if (item.category === '99') {
-      summary.unrecognised_count++;
-    }
-
     if (item.commissioning_status === 'TBC') {
       summary.tbc_count++;
-    }
-
-    if (item.commissioning_status === 'N' || !item.category) {
-      summary.excluded_count++;
     }
 
     // Collect warnings
@@ -305,19 +515,17 @@ const generateProcessingSummary = (equipment) => {
   return summary;
 };
 
-// Filter equipment for WBS inclusion
+// Filter equipment for WBS inclusion - Enhanced
 export const filterEquipmentForWBS = (equipment) => {
   // Include only equipment with commissioning status Y or TBC
-  // Exclude equipment marked as N
+  // Exclude equipment marked as N (this should already be filtered out)
   return equipment.filter(item => {
-    if (!item.commissioning_status || item.commissioning_status === 'N') {
-      return false;
-    }
-    return true;
+    const status = (item.commissioning_status || 'Y').toUpperCase();
+    return status === 'Y' || status === 'TBC';
   });
 };
 
-// Group equipment by subsystem
+// Group equipment by subsystem - Enhanced
 export const groupEquipmentBySubsystem = (equipment) => {
   // Extract subsystem information from equipment codes or descriptions
   const subsystemGroups = arrayHelpers.groupBy(equipment, item => {
@@ -335,7 +543,7 @@ export const groupEquipmentBySubsystem = (equipment) => {
   return subsystemGroups;
 };
 
-// Validate equipment categorization
+// Validate equipment categorization - Enhanced
 export const validateCategorization = (equipment) => {
   const validation = {
     isValid: true,
@@ -401,7 +609,7 @@ export const validateCategorization = (equipment) => {
   return validation;
 };
 
-// Export equipment for debugging
+// Export equipment for debugging - Enhanced
 export const exportCategorizedEquipment = (equipment) => {
   return equipment.map(item => ({
     equipment_number: item.equipment_number,
