@@ -601,7 +601,7 @@ const exportEquipmentListToCSV = (equipmentList, options = {}) => {
 };
 
 // Export comparison results (for Missing Equipment feature) - Enhanced
-export const exportComparisonToCSV = (comparisonResult, options = {}) => {
+const exportComparisonToCSV = (comparisonResult, options = {}) => {
   try {
     console.log('📤 EXPORTING COMPARISON RESULTS');
     
@@ -681,7 +681,7 @@ const formatChangeNotes = (item) => {
 };
 
 // Get enhanced export statistics
-export const getExportStatistics = (data, options = {}) => {
+const getExportStatistics = (data, options = {}) => {
   console.log('📊 CALCULATING EXPORT STATISTICS');
   
   const stats = {
@@ -716,5 +716,5 @@ export const getExportStatistics = (data, options = {}) => {
   return stats;
 };
 
-  export { formatDataForP6, validateExportRequest, exportEquipmentListToCSV, exportComparisonToCSV, getExportStatistics };
-
+// Export only the functions that need to be used by other modules
+export { formatDataForP6, validateExportRequest, exportEquipmentListToCSV, exportComparisonToCSV, getExportStatistics };
