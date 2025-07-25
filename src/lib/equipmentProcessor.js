@@ -265,18 +265,28 @@ const determineEquipmentCategory = (equipmentNumber) => {
   return '99'; // Unrecognized equipment
 };
 
-// FIXED: Enhanced Pattern Matching Function with type safety
+// FIXED: Enhanced Pattern Matching Function - handles RegExp objects correctly
 const testPatternMatch = (equipmentNumber, pattern) => {
-  // CRITICAL FIX: Ensure both parameters are strings
   const safeEquipmentNumber = safeToString(equipmentNumber);
-  const safePattern = safeToString(pattern);
   
-  if (!safeEquipmentNumber || !safePattern) {
+  if (!safeEquipmentNumber) {
+    return false;
+  }
+  
+  const cleanEquipmentNumber = safeEquipmentNumber.toUpperCase().trim();
+  
+  // CRITICAL FIX: Handle RegExp objects directly
+  if (pattern instanceof RegExp) {
+    return pattern.test(cleanEquipmentNumber);
+  }
+  
+  // Handle string patterns (fallback)
+  const safePattern = safeToString(pattern);
+  if (!safePattern) {
     return false;
   }
   
   const cleanPattern = safePattern.toUpperCase().trim();
-  const cleanEquipmentNumber = safeEquipmentNumber.toUpperCase().trim();
   
   // Direct prefix match (most common)
   if (cleanEquipmentNumber.startsWith(cleanPattern)) {
@@ -288,9 +298,8 @@ const testPatternMatch = (equipmentNumber, pattern) => {
     return true;
   }
   
-  // Pattern matching using existing pattern helpers - FIXED: Create RegExp for utils function
+  // Pattern matching using existing pattern helpers
   if (patternHelpers && patternHelpers.matchesPattern) {
-    // Convert string pattern to RegExp for the utils function
     try {
       let regexPattern = cleanPattern.replace(/X+/g, '\\d+').replace(/\+/g, '\\+');
       const regex = new RegExp(`^${regexPattern}$`, 'i');
