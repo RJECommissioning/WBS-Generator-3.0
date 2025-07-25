@@ -7,6 +7,7 @@ import { stringHelpers, patternHelpers, arrayHelpers } from '../utils';
  * - Enhanced parent-child relationship handling
  * - All standard categories created (even empty ones)
  * - Improved pattern matching and categorization
+ * - FIXED: Type checking for string operations
  */
 
 // Main equipment categorization function - Enhanced with comprehensive filtering
@@ -64,11 +65,11 @@ const processEquipmentList = (rawEquipmentList) => {
   // Step 1: Filter by commissioning status FIRST - CRITICAL FIX
   console.log('⚡ STEP 1: Commissioning Status Filtering');
   const filteredByCommissioning = rawEquipmentList.filter(item => {
-    const status = (item.commissioning_status || 'Y').toString().toUpperCase().trim();
+    const status = safeToString(item.commissioning_status || 'Y').toUpperCase().trim();
     const shouldInclude = status === 'Y' || status === 'TBC';
     
     if (!shouldInclude && status === 'N') {
-      console.log(`❌ Filtering out: ${item.equipment_number || 'NO_CODE'} (Status: ${status})`);
+      console.log(`❌ Filtering out: ${safeToString(item.equipment_number || item.equipment_code || 'NO_CODE')} (Status: ${status})`);
     }
     
     return shouldInclude;
@@ -81,9 +82,9 @@ const processEquipmentList = (rawEquipmentList) => {
   const cleanedEquipment = filteredByCommissioning
     .map(item => ({
       ...item,
-      equipment_number: stringHelpers.cleanEquipmentCode(item.equipment_number || ''),
+      equipment_number: safeCleanEquipmentCode(item.equipment_number || item.equipment_code || ''),
       parent_equipment_code: item.parent_equipment_code 
-        ? stringHelpers.cleanEquipmentCode(item.parent_equipment_code) 
+        ? safeCleanEquipmentCode(item.parent_equipment_code) 
         : null
     }))
     .filter(item => {
@@ -109,9 +110,9 @@ const processEquipmentList = (rawEquipmentList) => {
       is_sub_equipment: !!item.parent_equipment_code,
       parent_equipment: item.parent_equipment_code,
       level: item.parent_equipment_code ? 'child' : 'parent',
-      commissioning_status: (item.commissioning_status || 'Y').toString().toUpperCase().trim(),
-      description: item.description || '',
-      plu_field: item.plu_field || '',
+      commissioning_status: safeToString(item.commissioning_status || 'Y').toUpperCase().trim(),
+      description: safeToString(item.description || ''),
+      plu_field: safeToString(item.plu_field || ''),
       processing_notes: [],
       debug_info: {
         original_index: index,
@@ -217,13 +218,33 @@ const processEquipmentList = (rawEquipmentList) => {
   };
 };
 
-// Enhanced Equipment Categorization Function
+// FIXED: Safe string conversion helper
+const safeToString = (value) => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value);
+};
+
+// FIXED: Safe equipment code cleaning
+const safeCleanEquipmentCode = (value) => {
+  const stringValue = safeToString(value);
+  if (stringHelpers && stringHelpers.cleanEquipmentCode) {
+    return stringHelpers.cleanEquipmentCode(stringValue);
+  }
+  return stringValue.trim().toUpperCase();
+};
+
+// FIXED: Enhanced Equipment Categorization Function with type safety
 const determineEquipmentCategory = (equipmentNumber) => {
-  if (!equipmentNumber || equipmentNumber.trim() === '') {
+  // CRITICAL FIX: Ensure equipmentNumber is a string
+  const safeEquipmentNumber = safeToString(equipmentNumber);
+  
+  if (!safeEquipmentNumber || safeEquipmentNumber.trim() === '') {
     return '99';
   }
 
-  const cleanedNumber = equipmentNumber.toUpperCase().trim();
+  const cleanedNumber = safeEquipmentNumber.toUpperCase().trim();
   
   // Test against all equipment patterns with enhanced matching
   for (const [categoryId, patterns] of Object.entries(EQUIPMENT_PATTERNS)) {
@@ -242,30 +263,39 @@ const determineEquipmentCategory = (equipmentNumber) => {
   return '99'; // Unrecognized equipment
 };
 
-// Enhanced Pattern Matching Function
+// FIXED: Enhanced Pattern Matching Function with type safety
 const testPatternMatch = (equipmentNumber, pattern) => {
-  const cleanPattern = pattern.toUpperCase().trim();
+  // CRITICAL FIX: Ensure both parameters are strings
+  const safeEquipmentNumber = safeToString(equipmentNumber);
+  const safePattern = safeToString(pattern);
+  
+  if (!safeEquipmentNumber || !safePattern) {
+    return false;
+  }
+  
+  const cleanPattern = safePattern.toUpperCase().trim();
+  const cleanEquipmentNumber = safeEquipmentNumber.toUpperCase().trim();
   
   // Direct prefix match (most common)
-  if (equipmentNumber.startsWith(cleanPattern)) {
+  if (cleanEquipmentNumber.startsWith(cleanPattern)) {
     return true;
   }
   
   // Exact match
-  if (equipmentNumber === cleanPattern) {
+  if (cleanEquipmentNumber === cleanPattern) {
     return true;
   }
   
   // Pattern matching using existing pattern helpers
   if (patternHelpers && patternHelpers.matchesPattern) {
-    return patternHelpers.matchesPattern(equipmentNumber, pattern);
+    return patternHelpers.matchesPattern(cleanEquipmentNumber, cleanPattern);
   }
   
   // Fallback pattern matching
   if (cleanPattern.includes('X')) {
     const regexPattern = cleanPattern.replace(/X+/g, '\\d+').replace(/\+/g, '\\+');
     const regex = new RegExp(`^${regexPattern}`, 'i');
-    return regex.test(equipmentNumber);
+    return regex.test(cleanEquipmentNumber);
   }
   
   return false;
@@ -274,17 +304,17 @@ const testPatternMatch = (equipmentNumber, pattern) => {
 // Process individual equipment item - Enhanced version
 const processEquipmentItem = (item) => {
   try {
-    // Clean and normalize equipment code
-    const cleanCode = stringHelpers.cleanEquipmentCode(item.equipment_number);
-    const description = item.description || '';
-    const pluField = item.plu_field || '';
+    // Clean and normalize equipment code with type safety
+    const cleanCode = safeCleanEquipmentCode(item.equipment_number || item.equipment_code);
+    const description = safeToString(item.description || '');
+    const pluField = safeToString(item.plu_field || '');
     
     // Get parent equipment code from the actual column (KEY FIX!)
     const parentEquipmentCode = item.parent_equipment_code || item.parent_equipment || null;
-    const cleanParentCode = parentEquipmentCode ? stringHelpers.cleanEquipmentCode(parentEquipmentCode) : null;
+    const cleanParentCode = parentEquipmentCode ? safeCleanEquipmentCode(parentEquipmentCode) : null;
     
     // Check commissioning status
-    let commissioningStatus = (item.commissioning_status || 'Y').toString().toUpperCase();
+    let commissioningStatus = safeToString(item.commissioning_status || 'Y').toUpperCase();
     if (!['Y', 'N', 'TBC'].includes(commissioningStatus)) {
       commissioningStatus = 'Y'; // Default to Yes if invalid
     }
@@ -335,7 +365,7 @@ const processEquipmentItem = (item) => {
 
     // Try PLU field if no match found
     if (!category && pluField) {
-      const cleanPLU = stringHelpers.cleanEquipmentCode(pluField);
+      const cleanPLU = safeCleanEquipmentCode(pluField);
       for (const [categoryCode, patterns] of Object.entries(EQUIPMENT_PATTERNS)) {
         const matchingPattern = patterns.find(pattern => 
           patternHelpers.matchesPattern(cleanPLU, pattern.pattern || pattern)
@@ -390,7 +420,7 @@ const processEquipmentItem = (item) => {
   } catch (error) {
     return {
       ...item,
-      equipment_number: stringHelpers.cleanEquipmentCode(item.equipment_number || ''),
+      equipment_number: safeCleanEquipmentCode(item.equipment_number || item.equipment_code || ''),
       category: '99',
       category_name: 'Unrecognised Equipment',
       is_sub_equipment: false,
@@ -402,8 +432,8 @@ const processEquipmentItem = (item) => {
 
 // Handle special cases (Test bay, Panel Shop, Pad, etc.)
 const handleSpecialCases = (equipmentCode, description) => {
-  const lowerDesc = description.toLowerCase();
-  const lowerCode = equipmentCode.toLowerCase();
+  const lowerDesc = safeToString(description).toLowerCase();
+  const lowerCode = safeToString(equipmentCode).toLowerCase();
 
   // Preparations and set-up (01)
   if (lowerDesc.includes('test bay') || lowerCode.includes('testbay') ||
@@ -520,7 +550,7 @@ export const filterEquipmentForWBS = (equipment) => {
   // Include only equipment with commissioning status Y or TBC
   // Exclude equipment marked as N (this should already be filtered out)
   return equipment.filter(item => {
-    const status = (item.commissioning_status || 'Y').toUpperCase();
+    const status = safeToString(item.commissioning_status || 'Y').toUpperCase();
     return status === 'Y' || status === 'TBC';
   });
 };
@@ -530,8 +560,11 @@ export const groupEquipmentBySubsystem = (equipment) => {
   // Extract subsystem information from equipment codes or descriptions
   const subsystemGroups = arrayHelpers.groupBy(equipment, item => {
     // Look for subsystem patterns (Z01, Z02, etc.)
-    const subsystemMatch = item.description.match(/Z(\d{2})/i) || 
-                          item.equipment_number.match(/Z(\d{2})/i);
+    const description = safeToString(item.description);
+    const equipmentNumber = safeToString(item.equipment_number);
+    
+    const subsystemMatch = description.match(/Z(\d{2})/i) || 
+                          equipmentNumber.match(/Z(\d{2})/i);
     
     if (subsystemMatch) {
       return `Z${subsystemMatch[1]}`;
