@@ -1,4 +1,135 @@
-import Papa from 'papaparse';
+console.log('Excel Workbook Sheets:', workbook.SheetNames);
+
+      // Find the equipment sheet (prefer "Equipment_List" or first non-cover sheet)
+      let sheetName = workbook.SheetNames.find(name => 
+        name.toLowerCase().includes('equipment') || 
+        name.toLowerCase().includes('list')
+      ) || workbook.SheetNames.find(name => 
+        !name.toLowerCase().includes('cover') && 
+        !name.toLowerCase().includes('summary')
+      ) || workbook.SheetNames[0];
+
+      console.log('Using sheet:', sheetName);
+
+      const worksheet = workbook.Sheets[sheetName];
+
+      // Get the actual range of data (ignore empty columns/rows)
+      const range = XLSX.utils.decode_range(worksheet['!ref']);
+      console.log('Sheet range:', range);
+
+      // Convert to JSON with proper bounds
+      const rawData = XLSX.utils.sheet_to_json(worksheet, { 
+        header: 1,
+        defval: '',
+        blankrows: false,
+        range: range // Use actual data range
+      });
+
+      if (rawData.length === 0) {
+        reject(new Error('Excel sheet appears to be empty'));
+        return;
+      }
+
+      console.log('Raw data rows:', rawData.length);
+      console.log('First row (headers):', rawData[0]);
+
+      // Clean headers - remove empty columns and normalize
+      let headers = rawData[0] || [];
+      
+      // Find the last meaningful column (non-empty header)
+      let lastMeaningfulColumn = headers.length - 1;
+      while (lastMeaningfulColumn >= 0 && (!headers[lastMeaningfulColumn] || headers[lastMeaningColumn].toString().trim() === '')) {
+        lastMeaningfulColumn--;
+      }
+
+      // Trim headers to meaningful columns only
+      headers = headers.slice(0, lastMeaningfulColumn + 1);
+      
+      console.log('Cleaned headers count:', headers.length);
+      console.log('Cleaned headers:', headers);
+
+      // Normalize header names
+      const normalizedHeaders = headers.map(header => 
+        header.toString().trim().toLowerCase()
+          .replace(/\s+/g, '_')
+          .replace(/[^a-z0-9_]/g, '')
+      );
+
+      console.log('Normalized headers:', normalizedHeaders);
+
+      // Convert data rows to objects with normalized headers
+      const dataRows = rawData.slice(1);
+      const equipment = dataRows
+        .filter(row => row && row.length > 0) // Filter empty rows
+        .map(row => {
+          const item = {};
+          normalizedHeaders.forEach((header, index) => {
+            // Only include columns that have meaningful headers
+            if (header && header.trim() !== '' && row[index] !== undefined) {
+              item[header] = row[index] || '';
+            }
+          });
+          return item;
+        })
+        .filter(item => {
+          // Filter out completely empty items
+          return Object.values(item).some(value => 
+            value && value.toString().trim() !== ''
+          );
+        });
+
+      console.log('Processed equipment count:', equipment.length);
+      console.log('Sample equipment item:', equipment[0]);
+
+      // Log equipment codes for debugging
+      const equipmentCodes = equipment
+        .map(item => {
+          // Find potential equipment code fields
+          const codeFields = ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id'];
+          for (const field of codeFields) {
+            if (item[field] && item[field].toString().trim() !== '') {
+              return item[field].toString().trim();
+            }
+          }
+          return null;
+        })
+        .filter(code => code)
+        .slice(0, 10); // First 10 for debugging
+
+      console.log('Sample equipment codes:', equipmentCodes);
+
+      // Check for parent-child relationships
+      const parentFields = equipment.map(item => {
+        const parentFields = ['parent_equipment_code', 'parent_equipment', 'parent_code', 'parent_tag', 'parent'];
+        for (const field of parentFields) {
+          if (item[field] && item[field].toString().trim() !== '') {
+            return field;
+          }
+        }
+        return null;
+      }).filter(field => field);
+
+      console.log('Parent relationship fields found:', [...new Set(parentFields)]);
+
+      // Now process using the same logic as CSV parser
+      processEquipmentData(equipment, normalizedHeaders)
+        .then(result => {
+          console.log('Equipment processing complete:', {
+            totalProcessed: result.totalItems,
+            validationErrors: result.validation?.errors?.length || 0,
+            originalHeaders: result.originalHeaders
+          });
+          
+          // CRITICAL FIX: Ensure proper structure for StartNewProject
+          resolve({
+            hasData: result.hasData,
+            data: result.data,
+            dataLength: result.dataLength,
+            originalHeaders: result.originalHeaders,
+            type: 'equipment_list'
+          });
+        })
+        .catch(reject);import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { stringHelpers, validationHelpers } from '../utils';
 
@@ -141,12 +272,20 @@ export const parseExcelFile = (fileBuffer, filename) => {
             validationErrors: result.validation?.errors?.length || 0,
             originalHeaders: result.originalHeaders
           });
-          resolve(result);
+          
+          // CRITICAL FIX: Ensure proper structure for StartNewProject
+          resolve({
+            hasData: result.hasData,
+            data: result.data,
+            dataLength: result.dataLength,
+            originalHeaders: result.originalHeaders,
+            type: 'equipment_list'
+          });
         })
         .catch(reject);
 
     } catch (error) {
-      console.error('❌ Excel parsing failed:', error);
+      console.error('Excel parsing failed:', error);
       reject(new Error(`Excel parsing failed: ${error.message}`));
     }
   });
@@ -191,7 +330,15 @@ export const parseEquipmentList = (csvContent) => {
             });
 
             processEquipmentData(equipment, results.meta.fields || [])
-              .then(resolve)
+              .then(result => {
+                resolve({
+                  hasData: result.hasData,
+                  data: result.data,
+                  dataLength: result.dataLength,
+                  originalHeaders: result.originalHeaders,
+                  type: 'equipment_list'
+                });
+              })
               .catch(reject);
 
           } catch (processingError) {
@@ -209,7 +356,6 @@ export const parseEquipmentList = (csvContent) => {
   });
 };
 
-// Shared equipment data processing logic
 // Shared equipment data processing logic
 const processEquipmentData = (equipment, originalHeaders) => {
   return new Promise((resolve, reject) => {
@@ -281,8 +427,11 @@ const processEquipmentData = (equipment, originalHeaders) => {
       // Validate results
       const validation = validationHelpers.validateEquipmentList(equipment);
       
+      // CRITICAL FIX: Add missing hasData and dataLength fields
       resolve({
+        hasData: equipment.length > 0,  // CRITICAL ADD: This was missing!
         data: equipment,
+        dataLength: equipment.length,   // CRITICAL ADD: StartNewProject expects this
         validation: validation,
         totalItems: equipment.length,
         originalHeaders: originalHeaders,
