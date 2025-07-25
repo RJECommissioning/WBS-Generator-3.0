@@ -119,145 +119,158 @@ const StartNewProject = () => {
   };
 
   // Enhanced Process File Function with All Fixes Applied
-// Replace your existing handleProcessFile function in StartNewProject.jsx with this corrected version
+  const handleProcessFile = async () => {
+    try {
+      setLoading(true);
+      setProcessingStage('parsing', 10, 'Processing uploaded file...');
+      
+      // Get uploaded file from store
+      const uploadedFile = uploads['equipment_list']?.file;
+      if (!uploadedFile) {
+        throw new Error('No file uploaded. Please upload an equipment list first.');
+      }
+      
+      console.log('STARTING COMPREHENSIVE ENHANCED PROCESSING WITH ALL FIXES...');
+      console.log('Processing file:', {
+        name: uploadedFile.name,
+        type: uploadedFile.type,
+        size: uploadedFile.size,
+        lastModified: new Date(uploadedFile.lastModified).toLocaleString()
+      });
 
-const handleProcessFile = async () => {
-  try {
-    setLoading(true);
-    setProcessingStage('parsing', 10, 'Processing uploaded file...');
-    
-    console.log('STARTING COMPREHENSIVE ENHANCED PROCESSING WITH ALL FIXES...');
-    console.log('Processing file:', {
-      name: uploadedFile.name,
-      type: uploadedFile.type,
-      size: uploadedFile.size,
-      lastModified: new Date(uploadedFile.lastModified).toLocaleString()
-    });
+      // PHASE 1: Enhanced File Parsing
+      console.log('PHASE 1: ENHANCED FILE PARSING');
+      setProcessingStage('parsing', 20, 'Parsing equipment data...');
+      
+      const parseResult = await parseFile(uploadedFile);
+      if (!parseResult.hasData) {
+        throw new Error('No valid data found in uploaded file');
+      }
+      
+      console.log('Successfully parsed', parseResult.dataLength, 'raw equipment items');
 
-    // PHASE 1: Enhanced File Parsing
-    console.log('PHASE 1: ENHANCED FILE PARSING');
-    setProcessingStage('parsing', 20, 'Parsing equipment data...');
-    
-    const parseResult = await parseFile(uploadedFile);
-    if (!parseResult.hasData) {
-      throw new Error('No valid data found in uploaded file');
+      // PHASE 2: Enhanced Equipment Processing
+      console.log('PHASE 2: ENHANCED EQUIPMENT PROCESSING WITH ALL FIXES');
+      setProcessingStage('processing', 40, 'Categorizing equipment...');
+      
+      const processedData = await categorizeEquipment(parseResult.data);
+      console.log('Equipment processing completed:', {
+        totalProcessed: processedData.totalProcessed,
+        originalCount: processedData.originalCount,
+        afterCommissioningFilter: processedData.afterCommissioningFilter,
+        finalCount: processedData.finalCount,
+        parentItems: processedData.parentItems,
+        childItems: processedData.childItems,
+        tbcCount: processedData.tbcCount,
+        categoryStats: processedData.categoryStats
+      });
+
+      // CRITICAL FIX: Properly structure data for WBS generator
+      const wbsInputData = {
+        // Pass the actual categorized equipment (the key fix!)
+        categorizedEquipment: processedData.categorizedEquipment || [],
+        
+        // Pass TBC equipment separately  
+        tbcEquipment: processedData.tbcEquipment || [],
+        
+        // Pass subsystem mapping
+        subsystemMapping: processedData.subsystemMapping || {},
+        
+        // Pass project metadata
+        projectName: processedData.projectName || '5737 Summerfield Project',
+        
+        // Pass statistics for validation
+        stats: {
+          totalEquipment: processedData.totalProcessed,
+          categoryStats: processedData.categoryStats,
+          parentChildRelationships: processedData.parentChildRelationships
+        }
+      };
+
+      console.log('WBS Input Data Structure:', {
+        categorizedEquipmentCount: wbsInputData.categorizedEquipment.length,
+        tbcEquipmentCount: wbsInputData.tbcEquipment.length,
+        subsystemCount: Object.keys(wbsInputData.subsystemMapping).length,
+        projectName: wbsInputData.projectName
+      });
+
+      // PHASE 3: Enhanced WBS Structure Generation
+      console.log('PHASE 3: ENHANCED WBS STRUCTURE GENERATION WITH ALL STANDARD CATEGORIES');
+      setProcessingStage('generating', 60, 'Generating WBS structure...');
+      
+      // Pass the properly structured data to WBS generator
+      const wbsResult = await generateWBSStructure(wbsInputData);
+      console.log('WBS generation completed:', {
+        totalWBSItems: wbsResult.wbsStructure?.length || 0,
+        equipmentItems: wbsResult.stats?.equipmentItems || 0,
+        structuralItems: wbsResult.stats?.structuralItems || 0,
+        categoriesWithEquipment: wbsResult.stats?.categoriesWithEquipment || 0,
+        emptyCategories: wbsResult.stats?.emptyCategories || 0,
+        subsystemsCreated: wbsResult.stats?.subsystemsCreated || 0
+      });
+
+      // PHASE 4: Enhanced Export Preparation
+      console.log('PHASE 4: ENHANCED EXPORT PREPARATION WITH DUPLICATE PREVENTION');
+      setProcessingStage('exporting', 80, 'Preparing export data...');
+      
+      const exportResult = await formatDataForP6(wbsResult.wbsStructure);
+      console.log('Export preparation completed:', {
+        exportRecords: exportResult.data?.length || 0,
+        duplicatesRemoved: exportResult.duplicatesRemoved || 0,
+        levelDistribution: exportResult.levelDistribution || {},
+        validationPassed: exportResult.validationPassed || false,
+        validationErrors: exportResult.validationErrors?.length || 0,
+        validationWarnings: exportResult.validationWarnings?.length || 0
+      });
+
+      // Update store with all processed data
+      updateEquipmentList(parseResult.data);
+      updateWBSStructure(wbsResult.wbsStructure);
+
+      // Set processing results for UI display
+      setProcessingResults({
+        equipment: {
+          total_processed: processedData.totalProcessed,
+          grouped: processedData.categoryStats,
+          summary: processedData
+        },
+        wbs: {
+          total_items: wbsResult.wbsStructure?.length || 0,
+          max_level: exportResult.levelDistribution?.level5 ? 5 : 
+                     exportResult.levelDistribution?.level4 ? 4 :
+                     exportResult.levelDistribution?.level3 ? 3 : 2
+        }
+      });
+
+      setProcessingStage('complete', 100, 'Processing complete!');
+
+      // COMPREHENSIVE FINAL SUMMARY
+      console.log('ALL ENHANCED PHASES COMPLETE - Comprehensive Final Summary:');
+      console.log('   SUCCESS: All critical fixes applied successfully!');
+      console.log('   Equipment processed:', processedData.totalProcessed, '(from', processedData.originalCount, 'original)');
+      console.log('   Filtered out (status N):', processedData.originalCount - processedData.afterCommissioningFilter, 'items');
+      console.log('   WBS items created:', wbsResult.wbsStructure?.length || 0);
+      console.log('   ALL categories created:', Object.keys(processedData.categoryStats || {}).length, '(including', wbsResult.stats?.emptyCategories || 0, 'empty)');
+      console.log('   Parent-child relationships:', Object.keys(processedData.parentChildRelationships || {}).length);
+      console.log('   Export records:', exportResult.data?.length || 0, '(' + (exportResult.duplicatesRemoved || 0) + ' duplicates removed)');
+      console.log('   Expected vs Actual:', '1208 vs', (exportResult.data?.length || 0), '(' + Math.round(((exportResult.data?.length || 0) / 1208) * 100) + '%)');
+      console.log('   FIXES APPLIED:');
+      console.log('      All standard categories created (even empty ones like "03 | HV Switchboards")');
+      console.log('      Commissioning "N" status completely filtered out');
+      console.log('      Proper parent-child nesting (+UH → -F relationships)');
+      console.log('      Export duplicates eliminated');
+      console.log('      Hierarchical sorting and validation');
+
+      // Move to next step
+      handleNext();
+
+    } catch (error) {
+      console.error('Enhanced processing failed:', error);
+      setError(`Processing failed: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
-    
-    console.log('Successfully parsed', parseResult.dataLength, 'raw equipment items');
-
-    // PHASE 2: Enhanced Equipment Processing
-    console.log('PHASE 2: ENHANCED EQUIPMENT PROCESSING WITH ALL FIXES');
-    setProcessingStage('processing', 40, 'Categorizing equipment...');
-    
-    const processedData = await processEquipmentList(parseResult.data);
-    console.log('Equipment processing completed:', {
-      totalProcessed: processedData.totalProcessed,
-      originalCount: processedData.originalCount,
-      afterCommissioningFilter: processedData.afterCommissioningFilter,
-      finalCount: processedData.finalCount,
-      parentItems: processedData.parentItems,
-      childItems: processedData.childItems,
-      tbcCount: processedData.tbcCount,
-      categoryStats: processedData.categoryStats
-    });
-
-    // CRITICAL FIX: Properly structure data for WBS generator
-    const wbsInputData = {
-      // Pass the actual categorized equipment (the key fix!)
-      categorizedEquipment: processedData.categorizedEquipment || [],
-      
-      // Pass TBC equipment separately  
-      tbcEquipment: processedData.tbcEquipment || [],
-      
-      // Pass subsystem mapping
-      subsystemMapping: processedData.subsystemMapping || {},
-      
-      // Pass project metadata
-      projectName: processedData.projectName || '5737 Summerfield Project',
-      
-      // Pass statistics for validation
-      stats: {
-        totalEquipment: processedData.totalProcessed,
-        categoryStats: processedData.categoryStats,
-        parentChildRelationships: processedData.parentChildRelationships
-      }
-    };
-
-    console.log('WBS Input Data Structure:', {
-      categorizedEquipmentCount: wbsInputData.categorizedEquipment.length,
-      tbcEquipmentCount: wbsInputData.tbcEquipment.length,
-      subsystemCount: Object.keys(wbsInputData.subsystemMapping).length,
-      projectName: wbsInputData.projectName
-    });
-
-    // PHASE 3: Enhanced WBS Structure Generation
-    console.log('PHASE 3: ENHANCED WBS STRUCTURE GENERATION WITH ALL STANDARD CATEGORIES');
-    setProcessingStage('generating', 60, 'Generating WBS structure...');
-    
-    // Pass the properly structured data to WBS generator
-    const wbsResult = await generateWBS(wbsInputData);
-    console.log('WBS generation completed:', {
-      totalWBSItems: wbsResult.wbsStructure?.length || 0,
-      equipmentItems: wbsResult.stats?.equipmentItems || 0,
-      structuralItems: wbsResult.stats?.structuralItems || 0,
-      categoriesWithEquipment: wbsResult.stats?.categoriesWithEquipment || 0,
-      emptyCategories: wbsResult.stats?.emptyCategories || 0,
-      subsystemsCreated: wbsResult.stats?.subsystemsCreated || 0
-    });
-
-    // PHASE 4: Enhanced Export Preparation
-    console.log('PHASE 4: ENHANCED EXPORT PREPARATION WITH DUPLICATE PREVENTION');
-    setProcessingStage('exporting', 80, 'Preparing export data...');
-    
-    const exportResult = await formatDataForP6(wbsResult.wbsStructure);
-    console.log('Export preparation completed:', {
-      exportRecords: exportResult.data?.length || 0,
-      duplicatesRemoved: exportResult.duplicatesRemoved || 0,
-      levelDistribution: exportResult.levelDistribution || {},
-      validationPassed: exportResult.validationPassed || false,
-      validationErrors: exportResult.validationErrors?.length || 0,
-      validationWarnings: exportResult.validationWarnings?.length || 0
-    });
-
-    // Update store with all processed data
-    setProjectData({
-      wbsStructure: wbsResult.wbsStructure,
-      exportData: exportResult.data,
-      originalEquipment: parseResult.data,
-      processedEquipment: processedData,
-      stats: {
-        ...processedData.stats,
-        ...wbsResult.stats,
-        ...exportResult.stats
-      }
-    });
-
-    setProcessingStage('complete', 100, 'Processing complete!');
-
-    // COMPREHENSIVE FINAL SUMMARY
-    console.log('ALL ENHANCED PHASES COMPLETE - Comprehensive Final Summary:');
-    console.log('   SUCCESS: All critical fixes applied successfully!');
-    console.log('   Equipment processed:', processedData.totalProcessed, '(from', processedData.originalCount, 'original)');
-    console.log('   Filtered out (status N):', processedData.originalCount - processedData.afterCommissioningFilter, 'items');
-    console.log('   WBS items created:', wbsResult.wbsStructure?.length || 0);
-    console.log('   ALL categories created:', Object.keys(processedData.categoryStats || {}).length, '(including', wbsResult.stats?.emptyCategories || 0, 'empty)');
-    console.log('   Parent-child relationships:', Object.keys(processedData.parentChildRelationships || {}).length);
-    console.log('   Export records:', exportResult.data?.length || 0, '(' + (exportResult.duplicatesRemoved || 0) + ' duplicates removed)');
-    console.log('   Expected vs Actual:', '1208 vs', (exportResult.data?.length || 0), '(' + Math.round(((exportResult.data?.length || 0) / 1208) * 100) + '%)');
-    console.log('   FIXES APPLIED:');
-    console.log('      All standard categories created (even empty ones like "03 | HV Switchboards")');
-    console.log('      Commissioning "N" status completely filtered out');
-    console.log('      Proper parent-child nesting (+UH → -F relationships)');
-    console.log('      Export duplicates eliminated');
-    console.log('      Hierarchical sorting and validation');
-
-  } catch (error) {
-    console.error('Enhanced processing failed:', error);
-    setError(`Processing failed: ${error.message}`);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   // Handle step navigation
   const handleNext = () => {
