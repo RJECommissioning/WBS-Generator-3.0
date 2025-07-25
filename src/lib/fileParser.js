@@ -224,7 +224,7 @@ export const parseEquipmentList = (csvContent) => {
   });
 };
 
-// Shared equipment data processing logic
+// Shared equipment data processing logic - FIXED VERSION
 const processEquipmentData = (equipment, originalHeaders) => {
   return new Promise((resolve, reject) => {
     try {
@@ -478,94 +478,6 @@ export const parseExistingProject = (csvContent) => {
 
     } catch (error) {
       reject(new Error(`Failed to parse existing project: ${error.message}`));
-    }
-  });
-};
-
-// Shared equipment data processing logic
-const processEquipmentData = (equipment, originalHeaders) => {
-  return new Promise((resolve, reject) => {
-    try {
-      // Remove empty rows
-      equipment = equipment.filter(item => {
-        // Look for any field that might be an equipment identifier
-        const possibleIds = ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id'];
-        return possibleIds.some(field => 
-          item[field] && item[field].toString().trim() !== ''
-        );
-      });
-
-      // Normalize column names (handle variations)
-      equipment = equipment.map(item => {
-        const normalized = {};
-        
-        // Map common column variations to standard names
-        const columnMappings = {
-          'equipment_number': ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id', 'asset_number', 'tag_number'],
-          'description': ['description', 'desc', 'equipment_description', 'name', 'title', 'equipment_name', 'asset_description'],
-          'plu_field': ['plu_field', 'plu', 'secondary_code', 'alt_code', 'alternative_code'],
-          'commissioning_status': ['commissioning_status', 'status', 'commissioning', 'comm_status', 'commission_status', 'included'],
-          'parent_equipment_code': ['parent_equipment_code', 'parent_equipment', 'parent_code', 'parent_tag', 'parent', 'parent_equipment_number'],
-          'subsystem': ['subsystem', 'sub_system', 'system', 'sys'],
-          'location': ['location', 'area', 'zone'],
-          'category': ['category', 'cat', 'type', 'class'],
-          'manufacturer': ['manufacturer', 'make', 'vendor', 'supplier'],
-          'model': ['model', 'model_number', 'part_number'],
-          'voltage': ['voltage', 'volt', 'kv', 'rated_voltage'],
-          'power': ['power', 'kw', 'mw', 'rating', 'capacity']
-        };
-
-        // Find matching columns for each standard field
-        for (const [standardField, variations] of Object.entries(columnMappings)) {
-          const matchingKey = Object.keys(item).find(key => 
-            variations.includes(key) || 
-            variations.some(variation => key.includes(variation))
-          );
-          
-          if (matchingKey && item[matchingKey] !== undefined) {
-            normalized[standardField] = item[matchingKey];
-          }
-        }
-
-        // Add any unmapped fields as-is
-        for (const [key, value] of Object.entries(item)) {
-          if (!Object.values(columnMappings).flat().includes(key)) {
-            normalized[key] = value;
-          }
-        }
-
-        return normalized;
-      });
-
-      // Clean equipment numbers and set defaults
-      equipment = equipment.map(item => ({
-        ...item,
-        equipment_number: stringHelpers.cleanEquipmentCode(item.equipment_number || ''),
-        description: item.description || '',
-        commissioning_status: item.commissioning_status || 'Y'
-      }));
-
-      // Filter out items without equipment numbers
-      equipment = equipment.filter(item => 
-        item.equipment_number && item.equipment_number.trim() !== ''
-      );
-
-      // Validate results
-      const validation = validationHelpers.validateEquipmentList(equipment);
-      
-      // CRITICAL FIX: Add missing hasData and dataLength fields
-      resolve({
-        hasData: equipment.length > 0,  // CRITICAL ADD: This was missing!
-        data: equipment,
-        dataLength: equipment.length,   // CRITICAL ADD: StartNewProject expects this
-        validation: validation,
-        totalItems: equipment.length,
-        originalHeaders: originalHeaders,
-        errors: []
-      });
-
-    } catch (processingError) {
-      reject(new Error(`Error processing equipment data: ${processingError.message}`));
     }
   });
 };
