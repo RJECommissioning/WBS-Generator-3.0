@@ -10,6 +10,8 @@ import { stringHelpers, patternHelpers, arrayHelpers } from '../utils';
  * - FIXED: Type checking for string operations
  * - FIXED: Column mapping for commissioning_yn
  * - FIXED: Pattern matching RegExp conversion
+ * - NEW: TBC equipment separation
+ * - NEW: Subsystem extraction from Excel
  */
 
 // Main equipment categorization function - Enhanced with comprehensive filtering
@@ -29,9 +31,11 @@ export const categorizeEquipment = (equipmentList) => {
       original: processedData.totals.original,
       afterCommissioningFilter: processedData.totals.afterCommissioningFilter,
       final: processedData.totals.final,
+      tbcCount: processedData.totals.tbcCount,
       parentItems: processedData.totals.parentItems,
       childItems: processedData.totals.childItems,
-      categories: Object.keys(processedData.categoryStats).length
+      categories: Object.keys(processedData.categoryStats).length,
+      subsystems: Object.keys(processedData.subsystemMapping).length
     });
 
     // Build enhanced grouped structure for compatibility
@@ -45,6 +49,8 @@ export const categorizeEquipment = (equipmentList) => {
 
     return {
       equipment: processedData.equipment,
+      tbcEquipment: processedData.tbcEquipment, // NEW: TBC equipment
+      subsystemMapping: processedData.subsystemMapping, // NEW: Subsystem mapping
       grouped: groupedByCategory,
       summary: summary,
       total_processed: processedData.totals.final,
@@ -64,30 +70,40 @@ const processEquipmentList = (rawEquipmentList) => {
   console.log('ENHANCED EQUIPMENT PROCESSING');
   console.log(`Input: ${rawEquipmentList.length} raw equipment items`);
 
-  // Step 1: Filter by commissioning status FIRST - CRITICAL FIX
-  console.log('STEP 1: Commissioning Status Filtering');
-  const filteredByCommissioning = rawEquipmentList.filter(item => {
+  // Step 1: Separate TBC equipment FIRST - NEW CRITICAL LOGIC
+  console.log('STEP 1: TBC Equipment Separation');
+  const tbcEquipment = rawEquipmentList.filter(item => {
     const status = safeToString(item.commissioning_yn || 'Y').toUpperCase().trim();
-    const shouldInclude = status === 'Y' || status === 'TBC';
-    
-    if (!shouldInclude && status === 'N') {
-      console.log(`Filtering out: ${safeToString(item.equipment_number || item.equipment_code || 'NO_CODE')} (Status: ${status})`);
-    }
-    
-    return shouldInclude;
+    return status === 'TBC';
   });
 
-  console.log(`After commissioning filter: ${filteredByCommissioning.length} items (filtered out ${rawEquipmentList.length - filteredByCommissioning.length} items with status N)`);
+  const regularEquipment = rawEquipmentList.filter(item => {
+    const status = safeToString(item.commissioning_yn || 'Y').toUpperCase().trim();
+    return status === 'Y';
+  });
 
-  // Step 2: Clean and validate equipment numbers
-  console.log('STEP 2: Equipment Number Validation');
-  const cleanedEquipment = filteredByCommissioning
+  const excludedEquipment = rawEquipmentList.filter(item => {
+    const status = safeToString(item.commissioning_yn || 'Y').toUpperCase().trim();
+    return status === 'N';
+  });
+
+  console.log(`Equipment separation: ${regularEquipment.length} regular, ${tbcEquipment.length} TBC, ${excludedEquipment.length} excluded`);
+
+  // Step 2: Extract subsystem information - NEW CRITICAL LOGIC
+  console.log('STEP 2: Subsystem Extraction');
+  const subsystemMapping = extractSubsystems([...regularEquipment, ...tbcEquipment]);
+  console.log(`Found ${Object.keys(subsystemMapping).length} subsystems:`, Object.keys(subsystemMapping));
+
+  // Step 3: Process regular equipment (existing logic)
+  console.log('STEP 3: Regular Equipment Validation');
+  const cleanedEquipment = regularEquipment
     .map(item => ({
       ...item,
       equipment_number: safeCleanEquipmentCode(item.equipment_number || item.equipment_code || ''),
       parent_equipment_code: item.parent_equipment_code 
         ? safeCleanEquipmentCode(item.parent_equipment_code) 
-        : null
+        : null,
+      subsystem_info: subsystemMapping[item.subsystem] || { code: 'S1', name: 'Main Subsystem' }
     }))
     .filter(item => {
       const hasValidEquipmentNumber = item.equipment_number && item.equipment_number.trim() !== '';
@@ -97,10 +113,15 @@ const processEquipmentList = (rawEquipmentList) => {
       return hasValidEquipmentNumber;
     });
 
-  console.log(`After validation: ${cleanedEquipment.length} items with valid equipment numbers`);
+  console.log(`After validation: ${cleanedEquipment.length} regular equipment items`);
 
-  // Step 3: Enhanced categorization with pattern matching
-  console.log('STEP 3: Enhanced Equipment Categorization');
+  // Step 4: Process TBC equipment - NEW CRITICAL LOGIC
+  console.log('STEP 4: TBC Equipment Processing');
+  const processedTBCEquipment = processTBCEquipment(tbcEquipment, subsystemMapping);
+  console.log(`Processed ${processedTBCEquipment.length} TBC equipment items`);
+
+  // Step 5: Enhanced categorization with pattern matching (existing logic)
+  console.log('STEP 5: Enhanced Equipment Categorization');
   const categorizedEquipment = cleanedEquipment.map((item, index) => {
     const category = determineEquipmentCategory(item.equipment_number);
     const categoryInfo = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
@@ -128,10 +149,6 @@ const processEquipmentList = (rawEquipmentList) => {
     if (processedItem.is_sub_equipment) {
       processedItem.processing_notes.push(`Sub-equipment of ${item.parent_equipment_code}`);
     }
-    
-    if (processedItem.commissioning_status === 'TBC') {
-      processedItem.processing_notes.push('To Be Confirmed - will be placed in TBC section');
-    }
 
     if (category === '99') {
       processedItem.processing_notes.push('No pattern match found - categorized as Unrecognised');
@@ -144,8 +161,8 @@ const processEquipmentList = (rawEquipmentList) => {
     return processedItem;
   });
 
-  // Step 4: Build parent-child relationships
-  console.log('STEP 4: Building Parent-Child Relationships');
+  // Step 6: Build parent-child relationships (existing logic)
+  console.log('STEP 6: Building Parent-Child Relationships');
   const equipmentMap = new Map();
   const parentChildRelationships = [];
 
@@ -169,11 +186,11 @@ const processEquipmentList = (rawEquipmentList) => {
     console.log(`   ${rel.child} → ${rel.parent} ${parentExists ? 'EXISTS' : 'MISSING (parent not found)'}`);
   });
 
-  // Step 5: Generate category statistics - INCLUDES ALL STANDARD CATEGORIES
-  console.log('STEP 5: Category Statistics (All Standard Categories)');
+  // Step 7: Generate category statistics (existing logic)
+  console.log('STEP 7: Category Statistics (All Standard Categories)');
   const categoryStats = {};
   
-  // Initialize ALL standard categories (including empty ones) - CRITICAL FIX
+  // Initialize ALL standard categories (including empty ones)
   Object.entries(EQUIPMENT_CATEGORIES).forEach(([categoryId, categoryName]) => {
     categoryStats[categoryId] = {
       name: categoryName,
@@ -206,18 +223,74 @@ const processEquipmentList = (rawEquipmentList) => {
 
   return {
     equipment: categorizedEquipment,
+    tbcEquipment: processedTBCEquipment, // NEW: Return TBC equipment separately
+    subsystemMapping: subsystemMapping, // NEW: Return subsystem mapping
     categoryStats: categoryStats,
     parentChildRelationships: parentChildRelationships,
     equipmentMap: equipmentMap,
     totals: {
       original: rawEquipmentList.length,
-      afterCommissioningFilter: filteredByCommissioning.length,
+      afterCommissioningFilter: regularEquipment.length + tbcEquipment.length,
       afterValidation: cleanedEquipment.length,
       final: categorizedEquipment.length,
+      tbcCount: processedTBCEquipment.length, // NEW: TBC count
       parentItems: categorizedEquipment.filter(item => !item.parent_equipment_code).length,
       childItems: categorizedEquipment.filter(item => item.parent_equipment_code).length
     }
   };
+};
+
+// NEW: Extract subsystem information from Excel data
+const extractSubsystems = (equipmentList) => {
+  const subsystemMapping = {};
+  const subsystemCounter = {};
+  
+  equipmentList.forEach(item => {
+    const subsystemName = safeToString(item.subsystem || '').trim();
+    
+    if (subsystemName && !subsystemMapping[subsystemName]) {
+      // Count how many subsystems we have so far
+      const subsystemCount = Object.keys(subsystemMapping).length + 1;
+      const subsystemCode = `S${subsystemCount}`;
+      const zoneCode = `Z${subsystemCount.toString().padStart(2, '0')}`;
+      
+      subsystemMapping[subsystemName] = {
+        code: subsystemCode,
+        zone: zoneCode,
+        name: subsystemName,
+        fullName: `${subsystemCode} | ${zoneCode} | ${subsystemName}`
+      };
+      
+      console.log(`   Mapped: "${subsystemName}" → ${subsystemCode} | ${zoneCode}`);
+    }
+  });
+  
+  return subsystemMapping;
+};
+
+// NEW: Process TBC equipment separately
+const processTBCEquipment = (tbcEquipmentList, subsystemMapping) => {
+  return tbcEquipmentList
+    .map((item, index) => {
+      const cleanCode = safeCleanEquipmentCode(item.equipment_number || item.equipment_code || '');
+      const description = safeToString(item.description || '');
+      const subsystemName = safeToString(item.subsystem || '').trim();
+      
+      if (!cleanCode || cleanCode.trim() === '') {
+        return null; // Filter out invalid equipment
+      }
+      
+      return {
+        ...item,
+        equipment_number: cleanCode,
+        description: description,
+        commissioning_status: 'TBC',
+        subsystem_info: subsystemMapping[subsystemName] || { code: 'S1', name: 'Main Subsystem' },
+        tbc_sequence: `TBC${(index + 1).toString().padStart(3, '0')}`,
+        processing_notes: ['Equipment marked as TBC - To Be Confirmed']
+      };
+    })
+    .filter(item => item !== null);
 };
 
 // FIXED: Safe string conversion helper
@@ -518,7 +591,7 @@ const generateProcessingSummary = (processedData) => {
     sub_equipment_count: processedData.totals.childItems,
     parent_equipment_count: processedData.totals.parentItems,
     unrecognised_count: 0,
-    tbc_count: 0,
+    tbc_count: processedData.totals.tbcCount, // NEW: TBC count
     excluded_count: processedData.totals.original - processedData.totals.afterCommissioningFilter,
     processing_warnings: [],
     totals: processedData.totals
