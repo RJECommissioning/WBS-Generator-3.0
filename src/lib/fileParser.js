@@ -1,4 +1,25 @@
-console.log('Excel Workbook Sheets:', workbook.SheetNames);
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
+import { stringHelpers, validationHelpers } from '../utils';
+
+/**
+ * File Parser - Handles CSV, Excel (.xlsx), and XER file parsing
+ */
+
+// Excel Equipment List Parser - FIXED VERSION
+export const parseExcelFile = (fileBuffer, filename) => {
+  return new Promise((resolve, reject) => {
+    try {
+      // Parse Excel workbook
+      const workbook = XLSX.read(fileBuffer, {
+        cellStyles: true,
+        cellFormulas: true,
+        cellDates: true,
+        cellNF: true,
+        sheetStubs: false // Don't include empty cells
+      });
+
+      console.log('Excel Workbook Sheets:', workbook.SheetNames);
 
       // Find the equipment sheet (prefer "Equipment_List" or first non-cover sheet)
       let sheetName = workbook.SheetNames.find(name => 
@@ -38,7 +59,7 @@ console.log('Excel Workbook Sheets:', workbook.SheetNames);
       
       // Find the last meaningful column (non-empty header)
       let lastMeaningfulColumn = headers.length - 1;
-      while (lastMeaningfulColumn >= 0 && (!headers[lastMeaningfulColumn] || headers[lastMeaningColumn].toString().trim() === '')) {
+      while (lastMeaningfulColumn >= 0 && (!headers[lastMeaningfulColumn] || headers[lastMeaningfulColumn].toString().trim() === '')) {
         lastMeaningfulColumn--;
       }
 
@@ -115,159 +136,6 @@ console.log('Excel Workbook Sheets:', workbook.SheetNames);
       processEquipmentData(equipment, normalizedHeaders)
         .then(result => {
           console.log('Equipment processing complete:', {
-            totalProcessed: result.totalItems,
-            validationErrors: result.validation?.errors?.length || 0,
-            originalHeaders: result.originalHeaders
-          });
-          
-          // CRITICAL FIX: Ensure proper structure for StartNewProject
-          resolve({
-            hasData: result.hasData,
-            data: result.data,
-            dataLength: result.dataLength,
-            originalHeaders: result.originalHeaders,
-            type: 'equipment_list'
-          });
-        })
-        .catch(reject);import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
-import { stringHelpers, validationHelpers } from '../utils';
-
-/**
- * File Parser - Handles CSV, Excel (.xlsx), and XER file parsing
- */
-
-// Excel Equipment List Parser
-// Excel Equipment List Parser - FIXED VERSION
-export const parseExcelFile = (fileBuffer, filename) => {
-  return new Promise((resolve, reject) => {
-    try {
-      // Parse Excel workbook
-      const workbook = XLSX.read(fileBuffer, {
-        cellStyles: true,
-        cellFormulas: true,
-        cellDates: true,
-        cellNF: true,
-        sheetStubs: false // Don't include empty cells
-      });
-
-      console.log('📊 Excel Workbook Sheets:', workbook.SheetNames);
-
-      // Find the equipment sheet (prefer "Equipment_List" or first non-cover sheet)
-      let sheetName = workbook.SheetNames.find(name => 
-        name.toLowerCase().includes('equipment') || 
-        name.toLowerCase().includes('list')
-      ) || workbook.SheetNames.find(name => 
-        !name.toLowerCase().includes('cover') && 
-        !name.toLowerCase().includes('summary')
-      ) || workbook.SheetNames[0];
-
-      console.log('📋 Using sheet:', sheetName);
-
-      const worksheet = workbook.Sheets[sheetName];
-
-      // Get the actual range of data (ignore empty columns/rows)
-      const range = XLSX.utils.decode_range(worksheet['!ref']);
-      console.log('📐 Sheet range:', range);
-
-      // Convert to JSON with proper bounds
-      const rawData = XLSX.utils.sheet_to_json(worksheet, { 
-        header: 1,
-        defval: '',
-        blankrows: false,
-        range: range // Use actual data range
-      });
-
-      if (rawData.length === 0) {
-        reject(new Error('Excel sheet appears to be empty'));
-        return;
-      }
-
-      console.log('📄 Raw data rows:', rawData.length);
-      console.log('📄 First row (headers):', rawData[0]);
-
-      // Clean headers - remove empty columns and normalize
-      let headers = rawData[0] || [];
-      
-      // Find the last meaningful column (non-empty header)
-      let lastMeaningfulColumn = headers.length - 1;
-      while (lastMeaningfulColumn >= 0 && (!headers[lastMeaningfulColumn] || headers[lastMeaningfulColumn].toString().trim() === '')) {
-        lastMeaningfulColumn--;
-      }
-
-      // Trim headers to meaningful columns only
-      headers = headers.slice(0, lastMeaningfulColumn + 1);
-      
-      console.log('🧹 Cleaned headers count:', headers.length);
-      console.log('🧹 Cleaned headers:', headers);
-
-      // Normalize header names
-      const normalizedHeaders = headers.map(header => 
-        header.toString().trim().toLowerCase()
-          .replace(/\s+/g, '_')
-          .replace(/[^a-z0-9_]/g, '')
-      );
-
-      console.log('🔄 Normalized headers:', normalizedHeaders);
-
-      // Convert data rows to objects with normalized headers
-      const dataRows = rawData.slice(1);
-      const equipment = dataRows
-        .filter(row => row && row.length > 0) // Filter empty rows
-        .map(row => {
-          const item = {};
-          normalizedHeaders.forEach((header, index) => {
-            // Only include columns that have meaningful headers
-            if (header && header.trim() !== '' && row[index] !== undefined) {
-              item[header] = row[index] || '';
-            }
-          });
-          return item;
-        })
-        .filter(item => {
-          // Filter out completely empty items
-          return Object.values(item).some(value => 
-            value && value.toString().trim() !== ''
-          );
-        });
-
-      console.log('🔧 Processed equipment count:', equipment.length);
-      console.log('🔧 Sample equipment item:', equipment[0]);
-
-      // Log equipment codes for debugging
-      const equipmentCodes = equipment
-        .map(item => {
-          // Find potential equipment code fields
-          const codeFields = ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id'];
-          for (const field of codeFields) {
-            if (item[field] && item[field].toString().trim() !== '') {
-              return item[field].toString().trim();
-            }
-          }
-          return null;
-        })
-        .filter(code => code)
-        .slice(0, 10); // First 10 for debugging
-
-      console.log('🏷️ Sample equipment codes:', equipmentCodes);
-
-      // Check for parent-child relationships
-      const parentFields = equipment.map(item => {
-        const parentFields = ['parent_equipment_code', 'parent_equipment', 'parent_code', 'parent_tag', 'parent'];
-        for (const field of parentFields) {
-          if (item[field] && item[field].toString().trim() !== '') {
-            return field;
-          }
-        }
-        return null;
-      }).filter(field => field);
-
-      console.log('👨‍👦 Parent relationship fields found:', [...new Set(parentFields)]);
-
-      // Now process using the same logic as CSV parser
-      processEquipmentData(equipment, normalizedHeaders)
-        .then(result => {
-          console.log('✅ Equipment processing complete:', {
             totalProcessed: result.totalItems,
             validationErrors: result.validation?.errors?.length || 0,
             originalHeaders: result.originalHeaders
@@ -610,6 +478,94 @@ export const parseExistingProject = (csvContent) => {
 
     } catch (error) {
       reject(new Error(`Failed to parse existing project: ${error.message}`));
+    }
+  });
+};
+
+// Shared equipment data processing logic
+const processEquipmentData = (equipment, originalHeaders) => {
+  return new Promise((resolve, reject) => {
+    try {
+      // Remove empty rows
+      equipment = equipment.filter(item => {
+        // Look for any field that might be an equipment identifier
+        const possibleIds = ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id'];
+        return possibleIds.some(field => 
+          item[field] && item[field].toString().trim() !== ''
+        );
+      });
+
+      // Normalize column names (handle variations)
+      equipment = equipment.map(item => {
+        const normalized = {};
+        
+        // Map common column variations to standard names
+        const columnMappings = {
+          'equipment_number': ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id', 'asset_number', 'tag_number'],
+          'description': ['description', 'desc', 'equipment_description', 'name', 'title', 'equipment_name', 'asset_description'],
+          'plu_field': ['plu_field', 'plu', 'secondary_code', 'alt_code', 'alternative_code'],
+          'commissioning_status': ['commissioning_status', 'status', 'commissioning', 'comm_status', 'commission_status', 'included'],
+          'parent_equipment_code': ['parent_equipment_code', 'parent_equipment', 'parent_code', 'parent_tag', 'parent', 'parent_equipment_number'],
+          'subsystem': ['subsystem', 'sub_system', 'system', 'sys'],
+          'location': ['location', 'area', 'zone'],
+          'category': ['category', 'cat', 'type', 'class'],
+          'manufacturer': ['manufacturer', 'make', 'vendor', 'supplier'],
+          'model': ['model', 'model_number', 'part_number'],
+          'voltage': ['voltage', 'volt', 'kv', 'rated_voltage'],
+          'power': ['power', 'kw', 'mw', 'rating', 'capacity']
+        };
+
+        // Find matching columns for each standard field
+        for (const [standardField, variations] of Object.entries(columnMappings)) {
+          const matchingKey = Object.keys(item).find(key => 
+            variations.includes(key) || 
+            variations.some(variation => key.includes(variation))
+          );
+          
+          if (matchingKey && item[matchingKey] !== undefined) {
+            normalized[standardField] = item[matchingKey];
+          }
+        }
+
+        // Add any unmapped fields as-is
+        for (const [key, value] of Object.entries(item)) {
+          if (!Object.values(columnMappings).flat().includes(key)) {
+            normalized[key] = value;
+          }
+        }
+
+        return normalized;
+      });
+
+      // Clean equipment numbers and set defaults
+      equipment = equipment.map(item => ({
+        ...item,
+        equipment_number: stringHelpers.cleanEquipmentCode(item.equipment_number || ''),
+        description: item.description || '',
+        commissioning_status: item.commissioning_status || 'Y'
+      }));
+
+      // Filter out items without equipment numbers
+      equipment = equipment.filter(item => 
+        item.equipment_number && item.equipment_number.trim() !== ''
+      );
+
+      // Validate results
+      const validation = validationHelpers.validateEquipmentList(equipment);
+      
+      // CRITICAL FIX: Add missing hasData and dataLength fields
+      resolve({
+        hasData: equipment.length > 0,  // CRITICAL ADD: This was missing!
+        data: equipment,
+        dataLength: equipment.length,   // CRITICAL ADD: StartNewProject expects this
+        validation: validation,
+        totalItems: equipment.length,
+        originalHeaders: originalHeaders,
+        errors: []
+      });
+
+    } catch (processingError) {
+      reject(new Error(`Error processing equipment data: ${processingError.message}`));
     }
   });
 };
