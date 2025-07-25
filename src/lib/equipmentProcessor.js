@@ -306,8 +306,8 @@ import { stringHelpers, patternHelpers, arrayHelpers } from '../utils';
 // Main equipment categorization function - Enhanced with comprehensive filtering
 export const categorizeEquipment = (equipmentList) => {
   try {
-    console.log('🔍 STARTING ENHANCED EQUIPMENT CATEGORIZATION');
-    console.log(`📊 Input: ${equipmentList?.length || 0} raw equipment items`);
+    console.log('STARTING ENHANCED EQUIPMENT CATEGORIZATION');
+    console.log(`Input: ${equipmentList?.length || 0} raw equipment items`);
 
     if (!Array.isArray(equipmentList) || equipmentList.length === 0) {
       throw new Error('Invalid equipment list provided');
@@ -316,7 +316,7 @@ export const categorizeEquipment = (equipmentList) => {
     // PHASE 1: Enhanced Equipment Processing with Proper Filtering
     const processedData = processEquipmentList(equipmentList);
 
-    console.log('✅ Equipment categorization completed:', {
+    console.log('Equipment categorization completed:', {
       original: processedData.totals.original,
       afterCommissioningFilter: processedData.totals.afterCommissioningFilter,
       final: processedData.totals.final,
@@ -345,33 +345,33 @@ export const categorizeEquipment = (equipmentList) => {
     };
 
   } catch (error) {
-    console.error('❌ Equipment categorization failed:', error);
+    console.error('Equipment categorization failed:', error);
     throw new Error(`Equipment categorization failed: ${error.message}`);
   }
 };
 
 // Enhanced Equipment Processing with Comprehensive Filtering
 const processEquipmentList = (rawEquipmentList) => {
-  console.log('🔍 ENHANCED EQUIPMENT PROCESSING');
-  console.log(`📊 Input: ${rawEquipmentList.length} raw equipment items`);
+  console.log('ENHANCED EQUIPMENT PROCESSING');
+  console.log(`Input: ${rawEquipmentList.length} raw equipment items`);
 
   // Step 1: Filter by commissioning status FIRST - CRITICAL FIX
-  console.log('⚡ STEP 1: Commissioning Status Filtering');
+  console.log('STEP 1: Commissioning Status Filtering');
   const filteredByCommissioning = rawEquipmentList.filter(item => {
     const status = safeToString(item.commissioning_yn || 'Y').toUpperCase().trim();
     const shouldInclude = status === 'Y' || status === 'TBC';
     
     if (!shouldInclude && status === 'N') {
-      console.log(`❌ Filtering out: ${safeToString(item.equipment_number || item.equipment_code || 'NO_CODE')} (Status: ${status})`);
+      console.log(`Filtering out: ${safeToString(item.equipment_number || item.equipment_code || 'NO_CODE')} (Status: ${status})`);
     }
     
     return shouldInclude;
   });
 
-  console.log(`📊 After commissioning filter: ${filteredByCommissioning.length} items (filtered out ${rawEquipmentList.length - filteredByCommissioning.length} items with status N)`);
+  console.log(`After commissioning filter: ${filteredByCommissioning.length} items (filtered out ${rawEquipmentList.length - filteredByCommissioning.length} items with status N)`);
 
   // Step 2: Clean and validate equipment numbers
-  console.log('🧹 STEP 2: Equipment Number Validation');
+  console.log('STEP 2: Equipment Number Validation');
   const cleanedEquipment = filteredByCommissioning
     .map(item => ({
       ...item,
@@ -383,15 +383,15 @@ const processEquipmentList = (rawEquipmentList) => {
     .filter(item => {
       const hasValidEquipmentNumber = item.equipment_number && item.equipment_number.trim() !== '';
       if (!hasValidEquipmentNumber) {
-        console.log(`⚠️ Filtering out item with invalid equipment number:`, item);
+        console.log(`⚠Filtering out item with invalid equipment number:`, item);
       }
       return hasValidEquipmentNumber;
     });
 
-  console.log(`📊 After validation: ${cleanedEquipment.length} items with valid equipment numbers`);
+  console.log(' After validation: ${cleanedEquipment.length} items with valid equipment numbers`);
 
   // Step 3: Enhanced categorization with pattern matching
-  console.log('🏷️ STEP 3: Enhanced Equipment Categorization');
+  console.log(' STEP 3: Enhanced Equipment Categorization');
   const categorizedEquipment = cleanedEquipment.map((item, index) => {
     const category = determineEquipmentCategory(item.equipment_number);
     const categoryInfo = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
@@ -436,7 +436,7 @@ const processEquipmentList = (rawEquipmentList) => {
   });
 
   // Step 4: Build parent-child relationships
-  console.log('👨‍👦 STEP 4: Building Parent-Child Relationships');
+  console.log('STEP 4: Building Parent-Child Relationships');
   const equipmentMap = new Map();
   const parentChildRelationships = [];
 
@@ -457,7 +457,7 @@ const processEquipmentList = (rawEquipmentList) => {
   console.log(`🔗 Found ${parentChildRelationships.length} parent-child relationships:`);
   parentChildRelationships.slice(0, 10).forEach(rel => {
     const parentExists = equipmentMap.has(rel.parent);
-    console.log(`   ${rel.child} → ${rel.parent} ${parentExists ? '✅' : '❌ (parent not found)'}`);
+    console.log(`   ${rel.child} → ${rel.parent} ${parentExists ? '' : ' (parent not found)'}`);
   });
 
   // Step 5: Generate category statistics - INCLUDES ALL STANDARD CATEGORIES
@@ -546,13 +546,13 @@ const determineEquipmentCategory = (equipmentNumber) => {
       
       // Enhanced pattern matching
       if (testPatternMatch(cleanedNumber, patternString)) {
-        console.log(`🎯 Pattern match: ${cleanedNumber} matches ${patternString} → Category ${categoryId}`);
+        console.log(` Pattern match: ${cleanedNumber} matches ${patternString} → Category ${categoryId}`);
         return categoryId;
       }
     }
   }
 
-  console.log(`❌ No pattern match for: ${cleanedNumber}`);
+  console.log(` No pattern match for: ${cleanedNumber}`);
   return '99'; // Unrecognized equipment
 };
 
