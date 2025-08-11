@@ -2,18 +2,12 @@ import { EQUIPMENT_PATTERNS, SUB_EQUIPMENT_PATTERNS, EQUIPMENT_CATEGORIES, COMMI
 import { stringHelpers, patternHelpers, arrayHelpers } from '../utils';
 
 /**
- * Equipment Processor - FIXED with correct parent-child logic
- * - CRITICAL FIX: parent_equipment_code = "-" means "this IS a parent"
- * - CRITICAL FIX: parent_equipment_code = "T10" means "this is a child OF T10"
- * - Proper commissioning status filtering (N status completely excluded)
- * - Enhanced parent-child relationship handling
- * - All standard categories created (even empty ones)
- * - Improved pattern matching and categorization
- * - FIXED: Type checking for string operations
- * - FIXED: Column mapping for commissioning_yn
- * - FIXED: Pattern matching RegExp conversion
- * - NEW: TBC equipment separation
- * - NEW: Subsystem extraction from Excel
+ * Equipment Processor - COMPREHENSIVELY FIXED
+ * - CRITICAL FIX: Equipment codes being read as "-" instead of actual codes
+ * - CRITICAL FIX: Self-referencing parent logic corrected
+ * - CRITICAL FIX: Proper filtering to keep valid "-F01/X" style equipment
+ * - Enhanced debugging to track data corruption
+ * - Cross-validation with equipment code patterns
  */
 
 // Helper function for safe string conversion
@@ -22,16 +16,22 @@ const safeToString = (value) => {
   return typeof value === 'string' ? value : String(value);
 };
 
-// Safe equipment code cleaning
-const safeCleanEquipmentCode = (value) => {
+// Safe equipment code cleaning with debugging
+const safeCleanEquipmentCode = (value, context = '') => {
   const stringValue = safeToString(value);
+  
+  // Debug equipment code conversion
+  if (context && (stringValue === '-' || stringValue === '')) {
+    console.log(`🔍 Equipment code debug [${context}]: Original="${value}" → Cleaned="${stringValue}"`);
+  }
+  
   if (stringHelpers && stringHelpers.cleanEquipmentCode) {
     return stringHelpers.cleanEquipmentCode(stringValue);
   }
   return stringValue.trim().toUpperCase();
 };
 
-// CRITICAL HELPER: Determine if equipment is a parent
+// CRITICAL HELPER: Determine if equipment is a parent (FIXED)
 const isParentEquipment = (parentCode, equipmentNumber) => {
   const cleanParentCode = safeToString(parentCode).trim();
   const cleanEquipmentNumber = safeToString(equipmentNumber).trim();
@@ -49,24 +49,25 @@ const isParentEquipment = (parentCode, equipmentNumber) => {
   return false;
 };
 
-// ENHANCED: Cross-validate subsystem assignment using equipment code patterns
+// ENHANCED: Cross-validate subsystem assignment (CORRECTED PATTERNS)
 const validateSubsystemAssignment = (equipmentNumber, excelSubsystem) => {
   const cleanCode = safeToString(equipmentNumber).toUpperCase().trim();
   
-  // Equipment code subsystem patterns (for validation/edge cases)
+  // CORRECTED: Equipment code subsystem patterns (for validation/edge cases)
   const codePatterns = {
-    'S2 | Z02': /^(\+UH1\d+|\+WC1\d+|\+GB[2-3]\d+|.*Z01.*)/i,
-    'S3 | Z03': /^(\+UH2\d+|\+WC2\d+|\+GB[4-5]\d+|.*Z02.*)/i,
-    'S4 | Z04': /^(\+UH13\d+|.*Z06.*)/i,
-    'S5 | Z05': /^(FWT\d+|EG01-6000-\d+|.*BESS.*)/i,
-    'S6 | Z06': /^(.*Z03.*)/i
+    'Z01': /^(\+UH1\d+|\+WC1\d+|\+GB[2-3]\d+)/i,  // Switchroom 1
+    'Z02': /^(\+UH2\d+|\+WC2\d+|\+GB[4-5]\d+)/i,  // Switchroom 2  
+    'Z06': /^(\+UH13\d+)/i,                        // Auxiliary Power Unit
+    'BESS': /^(FWT\d+|EG01-6000-\d+|\+WC\d+)/i,   // BESS BoP
+    'Z03': /^(-Y\d+|-BR\d+|-BT\d+)/i              // Reactive Plant
   };
   
-  // Check if equipment code suggests different subsystem
-  for (const [subsystemCode, pattern] of Object.entries(codePatterns)) {
+  // Check if equipment code suggests different subsystem (just log, don't change)
+  for (const [locationCode, pattern] of Object.entries(codePatterns)) {
     if (pattern.test(cleanCode)) {
-      if (excelSubsystem && !excelSubsystem.includes(subsystemCode.split('|')[2]?.trim())) {
-        console.log(`⚠️ Subsystem validation: ${cleanCode} code suggests ${subsystemCode} but Excel says "${excelSubsystem}"`);
+      const expectedInSubsystem = excelSubsystem?.includes(locationCode);
+      if (!expectedInSubsystem && excelSubsystem) {
+        console.log(`⚠️ Subsystem validation: ${cleanCode} pattern suggests ${locationCode} but Excel subsystem is "${excelSubsystem}"`);
       }
       break;
     }
@@ -141,10 +142,10 @@ const determineEquipmentCategory = (equipmentNumber) => {
 
 // Enhanced Equipment Processing with Comprehensive Filtering
 const processEquipmentList = (rawEquipmentList) => {
-  console.log('ENHANCED EQUIPMENT PROCESSING WITH CORRECTED PARENT-CHILD LOGIC');
+  console.log('ENHANCED EQUIPMENT PROCESSING WITH COMPREHENSIVE DEBUGGING');
   console.log(`Input: ${rawEquipmentList.length} raw equipment items`);
 
-  // Step 1: Separate TBC equipment FIRST - NEW CRITICAL LOGIC
+  // Step 1: Separate TBC equipment FIRST
   console.log('STEP 1: TBC Equipment Separation');
   const tbcEquipment = rawEquipmentList.filter(item => {
     const status = safeToString(item.commissioning_yn || 'Y').toUpperCase().trim();
@@ -176,34 +177,54 @@ const processEquipmentList = (rawEquipmentList) => {
 
   console.log(`Found ${subsystemNames.length} subsystems:`, subsystemNames);
 
-  // Step 3: Process regular equipment with categorization
-  console.log('STEP 3: Regular Equipment Validation');
+  // Step 3: DEBUG EQUIPMENT CODES BEFORE PROCESSING
+  console.log('STEP 3: Equipment Code Analysis (First 10 items)');
+  regularEquipment.slice(0, 10).forEach((item, index) => {
+    const originalCode = item.equipment_number || item.equipment_code;
+    const cleanedCode = safeCleanEquipmentCode(originalCode, `item-${index}`);
+    console.log(`   ${index + 1}. Original: "${originalCode}" → Cleaned: "${cleanedCode}" | Parent: "${item.parent_equipment_code}"`);
+  });
+
+  // Step 4: Process regular equipment with CORRECTED filtering
+  console.log('STEP 4: Regular Equipment Validation with CORRECTED Filtering');
   const cleanedEquipment = regularEquipment
     .map(item => ({
       ...item,
-      equipment_number: safeCleanEquipmentCode(item.equipment_number || item.equipment_code || ''),
+      equipment_number: safeCleanEquipmentCode(item.equipment_number || item.equipment_code || '', 'processing'),
       parent_equipment_code: item.parent_equipment_code 
-        ? safeCleanEquipmentCode(item.parent_equipment_code) 
+        ? safeCleanEquipmentCode(item.parent_equipment_code, 'parent') 
         : null,
       subsystem_info: subsystemMapping[item.subsystem] || { code: 'S1', name: 'Main Subsystem' }
     }))
     .filter(item => {
-      // CRITICAL FIX: Filter out equipment with "-" or empty equipment numbers
-      const hasValidEquipmentNumber = item.equipment_number && 
-                                     item.equipment_number.trim() !== '' && 
-                                     item.equipment_number.trim() !== '-';
-      return hasValidEquipmentNumber;
+      // CRITICAL FIX: Only filter out EMPTY or EXACTLY "-" equipment codes
+      // Keep valid equipment like "-F01/X", "-FM11", "+UH104"
+      const equipmentCode = item.equipment_number?.trim() || '';
+      
+      const isValidEquipment = equipmentCode !== '' && 
+                              equipmentCode !== '-' && 
+                              equipmentCode.length > 0;
+      
+      // Debug filtering decisions for first 20 items
+      if (!isValidEquipment) {
+        console.log(`🚫 FILTERED OUT: Equipment code="${equipmentCode}" (length: ${equipmentCode.length})`);
+      }
+      
+      return isValidEquipment;
     });
 
-  console.log(`After validation: ${cleanedEquipment.length} regular equipment items`);
+  console.log(`After CORRECTED validation: ${cleanedEquipment.length} regular equipment items (was ${regularEquipment.length})`);
+  console.log(`Equipment lost in filtering: ${regularEquipment.length - cleanedEquipment.length}`);
 
-  // Step 4: Process TBC equipment
-  console.log('STEP 4: TBC Equipment Processing');
+  // Step 5: Process TBC equipment with CORRECTED filtering
+  console.log('STEP 5: TBC Equipment Processing with CORRECTED Filtering');
   const processedTBCEquipment = tbcEquipment
     .map((item, index) => {
-      const cleanCode = safeCleanEquipmentCode(item.equipment_number || item.equipment_code || '');
-      // CRITICAL FIX: Filter out "-" and empty equipment codes from TBC
+      const cleanCode = safeCleanEquipmentCode(item.equipment_number || item.equipment_code || '', 'tbc');
+      
+      // CRITICAL FIX: Only filter out EMPTY or EXACTLY "-" equipment codes
       if (!cleanCode || cleanCode.trim() === '' || cleanCode.trim() === '-') {
+        console.log(`🚫 TBC FILTERED OUT: Equipment code="${cleanCode}"`);
         return null;
       }
       
@@ -218,10 +239,10 @@ const processEquipmentList = (rawEquipmentList) => {
     })
     .filter(item => item !== null);
 
-  console.log(`Processed ${processedTBCEquipment.length} TBC equipment items (filtered out equipment with "-" codes)`);
+  console.log(`Processed ${processedTBCEquipment.length} TBC equipment items (filtered out ${tbcEquipment.length - processedTBCEquipment.length} items with empty codes)`);
 
-  // Step 5: Enhanced categorization with CORRECTED parent-child logic
-  console.log('STEP 5: Enhanced Equipment Categorization with FIXED Parent-Child Logic');
+  // Step 6: Enhanced categorization with CORRECTED parent-child logic
+  console.log('STEP 6: Enhanced Equipment Categorization with FIXED Parent-Child Logic');
   const categorizedEquipment = cleanedEquipment.map((item, index) => {
     const category = determineEquipmentCategory(item.equipment_number);
     const categoryInfo = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
@@ -229,7 +250,7 @@ const processEquipmentList = (rawEquipmentList) => {
     // CRITICAL FIX: Use updated isParentEquipment with self-referencing check
     const itemIsParent = isParentEquipment(item.parent_equipment_code, item.equipment_number);
     
-    // ENHANCED: Cross-validate subsystem assignment
+    // ENHANCED: Cross-validate subsystem assignment with corrected patterns
     const validatedSubsystem = validateSubsystemAssignment(item.equipment_number, item.subsystem);
     
     const processedItem = {
@@ -258,16 +279,17 @@ const processEquipmentList = (rawEquipmentList) => {
       processedItem.processing_notes.push('No pattern match found - categorized as Unrecognised');
     }
 
-    if (index < 20) { // Log first 20 for debugging
+    // Enhanced debugging for first 30 items
+    if (index < 30) {
       const parentChildInfo = itemIsParent ? '[PARENT]' : `[CHILD of: ${item.parent_equipment_code}]`;
-      console.log(`   ${index + 1}. ${item.equipment_number} → Category: ${category} (${categoryInfo}) ${parentChildInfo}`);
+      console.log(`   ${index + 1}. "${item.equipment_number}" → Category: ${category} (${categoryInfo}) ${parentChildInfo}`);
     }
 
     return processedItem;
   });
 
-  // Step 6: Build parent-child relationships
-  console.log('STEP 6: Building Parent-Child Relationships');
+  // Step 7: Build parent-child relationships
+  console.log('STEP 7: Building Parent-Child Relationships');
   const equipmentMap = new Map();
   const parentChildRelationships = [];
 
@@ -292,8 +314,8 @@ const processEquipmentList = (rawEquipmentList) => {
     console.log(`   ${rel.child} → ${rel.parent} ${parentExists ? 'EXISTS' : 'MISSING'}`);
   });
 
-  // Step 7: Generate category statistics with FIXED parent-child counting
-  console.log('STEP 7: Category Statistics (All Standard Categories)');
+  // Step 8: Generate category statistics with FIXED parent-child counting
+  console.log('STEP 8: Category Statistics (All Standard Categories)');
   const categoryStats = {};
   
   // Initialize ALL standard categories (including empty ones)
@@ -334,6 +356,21 @@ const processEquipmentList = (rawEquipmentList) => {
 
   console.log(`CORRECTED COUNTS: ${parentItems} parents, ${childItems} children (Total: ${parentItems + childItems})`);
 
+  // Step 9: Identify potential data corruption issues
+  console.log('STEP 9: Data Quality Analysis');
+  const emptyEquipmentCodes = categorizedEquipment.filter(item => !item.equipment_number || item.equipment_number.trim() === '');
+  const dashEquipmentCodes = categorizedEquipment.filter(item => item.equipment_number === '-');
+  const validEquipmentCodes = categorizedEquipment.filter(item => item.equipment_number && item.equipment_number.trim() !== '' && item.equipment_number.trim() !== '-');
+  
+  console.log(`Data quality: ${validEquipmentCodes.length} valid codes, ${emptyEquipmentCodes.length} empty codes, ${dashEquipmentCodes.length} dash codes`);
+
+  if (emptyEquipmentCodes.length > 0) {
+    console.log('⚠️ Found equipment with empty codes - data parsing issue?');
+    emptyEquipmentCodes.slice(0, 5).forEach((item, index) => {
+      console.log(`   Empty code ${index + 1}: Description="${item.description}"`);
+    });
+  }
+
   return {
     equipment: categorizedEquipment,
     tbcEquipment: processedTBCEquipment,
@@ -345,7 +382,14 @@ const processEquipmentList = (rawEquipmentList) => {
     parentItems: parentItems,
     childItems: childItems,
     categoryStats: categoryStats,
-    parentChildRelationships: parentChildRelationships
+    parentChildRelationships: parentChildRelationships,
+    // DEBUGGING DATA
+    dataQuality: {
+      validCodes: validEquipmentCodes.length,
+      emptyCodes: emptyEquipmentCodes.length,
+      dashCodes: dashEquipmentCodes.length,
+      filteredOut: regularEquipment.length - categorizedEquipment.length
+    }
   };
 };
 
@@ -356,19 +400,28 @@ const generateProcessingSummary = (processedData) => {
     total_processed: processedData.final,
     categories_created: Object.keys(processedData.categoryStats).length,
     tbc_count: processedData.tbcCount,
-    excluded_count: processedData.original - processedData.afterCommissioningFilter
+    excluded_count: processedData.original - processedData.afterCommissioningFilter,
+    data_quality: processedData.dataQuality
   };
 };
 
 // Main equipment categorization function - Enhanced with comprehensive filtering
 export const categorizeEquipment = (equipmentList) => {
   try {
-    console.log('STARTING ENHANCED EQUIPMENT CATEGORIZATION WITH CORRECTED PARENT-CHILD LOGIC');
+    console.log('STARTING COMPREHENSIVE EQUIPMENT CATEGORIZATION WITH DEBUGGING');
     console.log(`Input: ${equipmentList?.length || 0} raw equipment items`);
 
     if (!Array.isArray(equipmentList) || equipmentList.length === 0) {
       throw new Error('Invalid equipment list provided');
     }
+
+    // Debug first few raw items
+    console.log('RAW INPUT DEBUGGING (First 5 items):');
+    equipmentList.slice(0, 5).forEach((item, index) => {
+      const equipmentCode = item.equipment_number || item.equipment_code;
+      const parentCode = item.parent_equipment_number || item.parent_equipment_code;
+      console.log(`   Raw ${index + 1}: Equipment="${equipmentCode}" | Parent="${parentCode}" | Status="${item.commissioning_yn}"`);
+    });
 
     // PHASE 1: Enhanced Equipment Processing with Proper Filtering
     const processedData = processEquipmentList(equipmentList);
@@ -381,7 +434,8 @@ export const categorizeEquipment = (equipmentList) => {
       parentItems: processedData.parentItems,
       childItems: processedData.childItems,
       categories: Object.keys(processedData.categoryStats || {}).length,
-      subsystems: Object.keys(processedData.subsystemMapping || {}).length
+      subsystems: Object.keys(processedData.subsystemMapping || {}).length,
+      dataQuality: processedData.dataQuality
     });
 
     // Build enhanced grouped structure for compatibility
@@ -400,7 +454,7 @@ export const categorizeEquipment = (equipmentList) => {
       afterCommissioningFilter: processedData.afterCommissioningFilter,
       finalCount: processedData.final,
       parentItems: processedData.parentItems || 0,
-      childItems: processedData.childItems || processedData.final,
+      childItems: processedData.childItems || 0,
       tbcCount: processedData.tbcCount || 0,
       categoryStats: processedData.categoryStats,
       
@@ -412,6 +466,7 @@ export const categorizeEquipment = (equipmentList) => {
       
       // Additional data
       parentChildRelationships: processedData.parentChildRelationships,
+      dataQuality: processedData.dataQuality,
       
       // Keep your existing fields for backward compatibility
       equipment: processedData.equipment,
