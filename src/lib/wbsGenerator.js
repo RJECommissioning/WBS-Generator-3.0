@@ -162,7 +162,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
   const wbsStructure = [];
   let wbsCodeCounter = { level1: 1, level2: 1, level3: 1, level4: 1, level5: 1 };
 
-  // Step 1: Create Project Root Structure
+ // Step 1: Create Project Root Structure
   console.log('🌳 STEP 1: Creating Project Root Structure');
   
   // Project Root (Level 1)
@@ -313,8 +313,12 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     addTBCEquipmentToWBS(wbsStructure, tbcEquipment, tbcSectionCode);
   }
 
-  // Step 5: Generate Summary Statistics
-  console.log('📊 STEP 5: WBS Generation Summary');
+  // Step 5: Add E | Energisation section (REQUIRED for every project)
+  console.log('⚡ STEP 5: Adding E | Energisation Section');  
+  const energisationCode = addEnergisationSection(wbsStructure, '1');
+
+  // Step 6: Generate Summary Statistics
+  console.log('📊 STEP 6: WBS Generation Summary');
   
   const summary = {
     total_wbs_items: wbsStructure.length,
@@ -342,7 +346,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
   console.log(`   📁 Empty Categories: ${summary.empty_categories}`);
   console.log(`   👨‍👦 Parent-Child Pairs: ${summary.parent_child_pairs}`);
 
-  // Step 6: Sort and validate WBS structure
+  // Step 7: Sort and validate WBS structure
   const sortedWBS = sortWBSStructure(wbsStructure);
   const validation = validateWBSStructure(sortedWBS);
 
@@ -567,6 +571,60 @@ const addTBCEquipmentToWBS = (wbsStructure, tbcEquipment, parentCode) => {
     console.log(`       ⏳ Added TBC item: ${tbcCode} - ${item.equipment_number}`);
   });
 };
+// Add E | Energisation section (MISSING from current code)  
+const addEnergisationSection = (wbsStructure, parentCode) => {
+  console.log(`⚡ ADDING E | ENERGISATION SECTION to ${parentCode}`);
+  
+  // Calculate next sequence number
+  const siblingCount = wbsStructure.filter(item => item.parent_wbs_code === parentCode).length;
+  const energisationCode = `${parentCode}.${siblingCount + 1}`;
+  
+  // Main Energisation section (Level 2)
+  wbsStructure.push({
+    wbs_code: energisationCode,
+    parent_wbs_code: parentCode,
+    wbs_name: "E | Energisation",
+    equipment_number: null,
+    description: "Project Energisation Activities",
+    commissioning_status: null,
+    level: 2,
+    color: BRAND_COLORS.level2 || WBS_LEVEL_COLORS[2],
+    is_category: true,
+    is_equipment: false,
+    is_new: false
+  });
+  
+  // System subsection (Level 3)  
+  const systemCode = `${energisationCode}.1`;
+  wbsStructure.push({
+    wbs_code: systemCode,
+    parent_wbs_code: energisationCode,
+    wbs_name: "System",
+    level: 3,
+    color: BRAND_COLORS.level3 || WBS_LEVEL_COLORS[3],
+    is_category: true,
+    is_equipment: false,
+    is_new: false
+  });
+  
+  // Energisation phases (Level 4)
+  ['Energisation', 'Pre-Energisation', 'Post Energisation'].forEach((phase, index) => {
+    wbsStructure.push({
+      wbs_code: `${systemCode}.${index + 1}`,
+      parent_wbs_code: systemCode,
+      wbs_name: phase,
+      equipment_number: phase.replace(/\s+/g, ''),
+      level: 4,
+      color: BRAND_COLORS.level4 || WBS_LEVEL_COLORS[4],
+      is_category: false,
+      is_equipment: true,
+      is_new: false
+    });
+  });
+  
+  console.log(`   ⚡ Added Energisation section: ${energisationCode}`);
+  return energisationCode;
+};
 
 // Convert legacy format to new format for compatibility
 const convertLegacyFormat = (categorizedEquipment) => {
@@ -587,7 +645,7 @@ const convertLegacyFormat = (categorizedEquipment) => {
       child_equipment: equipmentInCategory.filter(item => item.is_sub_equipment)
     };
   });
-
+  
   // Create parent-child relationships
   const parentChildRelationships = [];
   categorizedEquipment.forEach(item => {
