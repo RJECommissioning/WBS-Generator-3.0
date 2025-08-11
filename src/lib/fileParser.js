@@ -246,7 +246,7 @@ const processEquipmentData = (equipment, originalHeaders) => {
           'equipment_number': ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id', 'asset_number', 'tag_number'],
           'description': ['description', 'desc', 'equipment_description', 'name', 'title', 'equipment_name', 'asset_description'],
           'plu_field': ['plu_field', 'plu', 'secondary_code', 'alt_code', 'alternative_code'],
-          'commissioning_status': ['commissioning_status', 'status', 'commissioning', 'comm_status', 'commission_status', 'included'],
+          'commissioning_status': ['commissioning_status', 'status', 'commissioning', 'comm_status', 'commission_status', 'included', 'commissioning_yn'],
           'parent_equipment_code': ['parent_equipment_code', 'parent_equipment', 'parent_code', 'parent_tag', 'parent', 'parent_equipment_number'],
           'subsystem': ['subsystem', 'sub_system', 'system', 'sys'],
           'location': ['location', 'area', 'zone'],
