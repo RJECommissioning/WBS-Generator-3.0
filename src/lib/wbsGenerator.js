@@ -14,6 +14,7 @@ import { stringHelpers, wbsHelpers, arrayHelpers } from '../utils';
  * - Proper parent-child relationship nesting
  * - 5-level hierarchy structure
  * - Enhanced parent-child equipment handling
+ * - FIXED: Input data structure handling for object-based input
  */
 
 // Add equipment categories to WBS structure for continue project functionality
@@ -79,25 +80,66 @@ const addEquipmentCategoriesToWBS = (wbsItems, equipment, parentCode) => {
   console.log(`✅ Successfully added ${wbsItems.length} items to WBS structure`);
 };
 
-// Main WBS generation function - Enhanced with comprehensive fixes
-export const generateWBSStructure = (categorizedEquipment, projectName = '5737 Summerfield Project') => {
+// Main WBS generation function - FIXED with enhanced input handling
+export const generateWBSStructure = (inputData, projectName = '5737 Summerfield Project') => {
   try {
     console.log('🏗️ STARTING ENHANCED WBS STRUCTURE GENERATION');
-    console.log(`📊 Input: ${categorizedEquipment?.length || 0} categorized equipment items`);
+    
+    // CRITICAL FIX: Handle both object input (new format) and array input (legacy format)
+    let actualEquipmentArray = [];
+    let actualTBCArray = [];
+    let actualSubsystemMapping = {};
+    let processedEquipmentData = null;
 
-    if (!Array.isArray(categorizedEquipment) || categorizedEquipment.length === 0) {
+    if (inputData && typeof inputData === 'object' && !Array.isArray(inputData)) {
+      // New object format from StartNewProject.jsx
+      console.log('🔧 Processing object input format from StartNewProject');
+      actualEquipmentArray = inputData.categorizedEquipment || inputData.equipment || [];
+      actualTBCArray = inputData.tbcEquipment || [];
+      actualSubsystemMapping = inputData.subsystemMapping || {};
+      projectName = inputData.projectName || projectName;
+      
+      // Check if we have processed equipment data structure
+      if (inputData.categoryStats) {
+        processedEquipmentData = inputData;
+      }
+      
+      console.log(`📊 Extracted from object: ${actualEquipmentArray.length} equipment items, ${actualTBCArray.length} TBC items`);
+    } else if (Array.isArray(inputData)) {
+      // Legacy array format
+      console.log('🔧 Processing legacy array input format');
+      actualEquipmentArray = inputData;
+      console.log(`📊 Legacy array: ${actualEquipmentArray.length} equipment items`);
+    } else {
+      console.log('⚠️ Invalid or empty input data');
+    }
+
+    console.log(`📊 Final equipment count: ${actualEquipmentArray.length} items`);
+
+    if (actualEquipmentArray.length === 0) {
       console.log('⚠️ No equipment provided, creating empty WBS structure with all standard categories');
       return generateEmptyWBSStructure(projectName);
     }
 
-    // Use enhanced equipment data if available (from new processor)
-    let processedEquipmentData;
-    if (categorizedEquipment.categoryStats) {
-      // New format from enhanced processor
-      processedEquipmentData = categorizedEquipment;
-    } else {
-      // Legacy format - convert to new format
-      processedEquipmentData = convertLegacyFormat(categorizedEquipment);
+    // Use enhanced equipment data if available, otherwise convert to new format
+    if (!processedEquipmentData) {
+      if (actualEquipmentArray[0]?.categoryStats) {
+        // New format from enhanced processor
+        processedEquipmentData = actualEquipmentArray;
+      } else {
+        // Legacy format - convert to new format
+        processedEquipmentData = convertLegacyFormat(actualEquipmentArray);
+      }
+    }
+
+    // Add TBC equipment to processed data if provided separately
+    if (actualTBCArray.length > 0) {
+      processedEquipmentData.tbcEquipment = actualTBCArray;
+    }
+
+    // Add subsystem mapping if provided
+    if (Object.keys(actualSubsystemMapping).length > 0) {
+      processedEquipmentData.subsystemMapping = actualSubsystemMapping;
     }
 
     return generateEnhancedWBSStructure(processedEquipmentData, projectName);
@@ -248,7 +290,8 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
   });
 
   // Step 4: Add TBC Section if needed
-  const tbcEquipment = processedEquipmentData.equipment?.filter(item => item.commissioning_status === 'TBC') || [];
+  const tbcEquipment = processedEquipmentData.tbcEquipment || 
+                       processedEquipmentData.equipment?.filter(item => item.commissioning_status === 'TBC') || [];
   if (tbcEquipment.length > 0) {
     console.log(`🔍 STEP 4: Adding TBC Section with ${tbcEquipment.length} items`);
     
@@ -308,13 +351,15 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
   }
 
   return {
-    wbs_structure: sortedWBS,
+    wbsStructure: sortedWBS,
+    wbs_structure: sortedWBS, // Compatibility alias
     total_items: sortedWBS.length,
     equipment_count: processedEquipmentData.totals?.final || processedEquipmentData.equipment?.length || 0,
     tbc_count: tbcEquipment.length,
     subsystem_count: 1,
     max_level: Math.max(...sortedWBS.map(item => item.level)),
     summary: summary,
+    stats: summary, // Compatibility alias
     validation: validation,
     categoryWBSMap: Object.fromEntries(categoryWBSMap)
   };
@@ -636,7 +681,8 @@ const generateEmptyWBSStructure = (projectName) => {
   });
 
   return {
-    wbs_structure: wbsStructure,
+    wbsStructure: wbsStructure,
+    wbs_structure: wbsStructure, // Compatibility alias
     total_items: wbsStructure.length,
     equipment_count: 0,
     tbc_count: 0,
