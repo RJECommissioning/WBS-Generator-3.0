@@ -2,7 +2,9 @@ import { EQUIPMENT_PATTERNS, SUB_EQUIPMENT_PATTERNS, EQUIPMENT_CATEGORIES, COMMI
 import { stringHelpers, patternHelpers, arrayHelpers } from '../utils';
 
 /**
- * Equipment Processor - Enhanced with comprehensive fixes
+ * Equipment Processor - FIXED with correct parent-child logic
+ * - CRITICAL FIX: parent_equipment_code = "-" means "this IS a parent"
+ * - CRITICAL FIX: parent_equipment_code = "T10" means "this is a child OF T10"
  * - Proper commissioning status filtering (N status completely excluded)
  * - Enhanced parent-child relationship handling
  * - All standard categories created (even empty ones)
@@ -27,6 +29,12 @@ const safeCleanEquipmentCode = (value) => {
     return stringHelpers.cleanEquipmentCode(stringValue);
   }
   return stringValue.trim().toUpperCase();
+};
+
+// CRITICAL HELPER: Determine if equipment is a parent
+const isParentEquipment = (parentCode) => {
+  const cleanParentCode = safeToString(parentCode).trim();
+  return !cleanParentCode || cleanParentCode === '-' || cleanParentCode === '';
 };
 
 // Enhanced Pattern Matching Function - handles RegExp objects correctly
@@ -95,7 +103,7 @@ const determineEquipmentCategory = (equipmentNumber) => {
 
 // Enhanced Equipment Processing with Comprehensive Filtering
 const processEquipmentList = (rawEquipmentList) => {
-  console.log('ENHANCED EQUIPMENT PROCESSING');
+  console.log('ENHANCED EQUIPMENT PROCESSING WITH CORRECTED PARENT-CHILD LOGIC');
   console.log(`Input: ${rawEquipmentList.length} raw equipment items`);
 
   // Step 1: Separate TBC equipment FIRST - NEW CRITICAL LOGIC
@@ -170,19 +178,23 @@ const processEquipmentList = (rawEquipmentList) => {
 
   console.log(`Processed ${processedTBCEquipment.length} TBC equipment items`);
 
-  // Step 5: Enhanced categorization with pattern matching
-  console.log('STEP 5: Enhanced Equipment Categorization');
+  // Step 5: Enhanced categorization with CORRECTED parent-child logic
+  console.log('STEP 5: Enhanced Equipment Categorization with FIXED Parent-Child Logic');
   const categorizedEquipment = cleanedEquipment.map((item, index) => {
     const category = determineEquipmentCategory(item.equipment_number);
     const categoryInfo = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
+    
+    // CRITICAL FIX: Correct parent-child determination
+    const itemIsParent = isParentEquipment(item.parent_equipment_code);
     
     const processedItem = {
       ...item,
       category: category,
       category_name: categoryInfo,
-      is_sub_equipment: !!item.parent_equipment_code,
-      parent_equipment: item.parent_equipment_code,
-      level: item.parent_equipment_code ? 'child' : 'parent',
+      // FIXED: "-" means this IS a parent, not a child
+      is_sub_equipment: !itemIsParent,
+      parent_equipment: itemIsParent ? null : item.parent_equipment_code,
+      level: itemIsParent ? 'parent' : 'child',
       commissioning_status: safeToString(item.commissioning_yn || 'Y').toUpperCase().trim(),
       description: safeToString(item.description || ''),
       plu_field: safeToString(item.plu_field || ''),
@@ -190,8 +202,10 @@ const processEquipmentList = (rawEquipmentList) => {
     };
 
     // Add processing notes
-    if (processedItem.is_sub_equipment) {
+    if (!itemIsParent) {
       processedItem.processing_notes.push(`Sub-equipment of ${item.parent_equipment_code}`);
+    } else {
+      processedItem.processing_notes.push('Parent equipment');
     }
 
     if (category === '99') {
@@ -199,7 +213,8 @@ const processEquipmentList = (rawEquipmentList) => {
     }
 
     if (index < 20) { // Log first 20 for debugging
-      console.log(`   ${index + 1}. ${item.equipment_number} → Category: ${category} (${categoryInfo}) ${item.parent_equipment_code ? `[Child of: ${item.parent_equipment_code}]` : '[Parent]'}`);
+      const parentChildInfo = itemIsParent ? '[PARENT]' : `[CHILD of: ${item.parent_equipment_code}]`;
+      console.log(`   ${index + 1}. ${item.equipment_number} → Category: ${category} (${categoryInfo}) ${parentChildInfo}`);
     }
 
     return processedItem;
@@ -214,7 +229,8 @@ const processEquipmentList = (rawEquipmentList) => {
   categorizedEquipment.forEach(item => {
     equipmentMap.set(item.equipment_number, item);
     
-    if (item.parent_equipment_code) {
+    // FIXED: Only add to relationships if it's actually a child (not parent)
+    if (!isParentEquipment(item.parent_equipment_code)) {
       parentChildRelationships.push({
         child: item.equipment_number,
         parent: item.parent_equipment_code,
@@ -230,7 +246,7 @@ const processEquipmentList = (rawEquipmentList) => {
     console.log(`   ${rel.child} → ${rel.parent} ${parentExists ? 'EXISTS' : 'MISSING'}`);
   });
 
-  // Step 7: Generate category statistics
+  // Step 7: Generate category statistics with FIXED parent-child counting
   console.log('STEP 7: Category Statistics (All Standard Categories)');
   const categoryStats = {};
   
@@ -245,14 +261,15 @@ const processEquipmentList = (rawEquipmentList) => {
     };
   });
 
-  // Populate category statistics
+  // Populate category statistics with CORRECTED logic
   categorizedEquipment.forEach(item => {
     const category = item.category || '99';
     if (categoryStats[category]) {
       categoryStats[category].count++;
       categoryStats[category].equipment.push(item);
       
-      if (item.parent_equipment_code) {
+      // FIXED: Use the corrected is_sub_equipment flag
+      if (item.is_sub_equipment) {
         categoryStats[category].child_equipment.push(item);
       } else {
         categoryStats[category].parent_equipment.push(item);
@@ -265,6 +282,12 @@ const processEquipmentList = (rawEquipmentList) => {
     console.log(`   ${categoryId} | ${stats.name}: ${stats.count} items (${stats.parent_equipment.length} parents, ${stats.child_equipment.length} children)`);
   });
 
+  // FIXED: Correct parent/child counting
+  const parentItems = categorizedEquipment.filter(item => !item.is_sub_equipment).length;
+  const childItems = categorizedEquipment.filter(item => item.is_sub_equipment).length;
+
+  console.log(`CORRECTED COUNTS: ${parentItems} parents, ${childItems} children (Total: ${parentItems + childItems})`);
+
   return {
     equipment: categorizedEquipment,
     tbcEquipment: processedTBCEquipment,
@@ -273,8 +296,8 @@ const processEquipmentList = (rawEquipmentList) => {
     afterCommissioningFilter: regularEquipment.length + tbcEquipment.length,
     final: categorizedEquipment.length,
     tbcCount: processedTBCEquipment.length,
-    parentItems: categorizedEquipment.filter(item => !item.parent_equipment_code).length,
-    childItems: categorizedEquipment.filter(item => item.parent_equipment_code).length,
+    parentItems: parentItems,
+    childItems: childItems,
     categoryStats: categoryStats,
     parentChildRelationships: parentChildRelationships
   };
@@ -294,7 +317,7 @@ const generateProcessingSummary = (processedData) => {
 // Main equipment categorization function - Enhanced with comprehensive filtering
 export const categorizeEquipment = (equipmentList) => {
   try {
-    console.log('STARTING ENHANCED EQUIPMENT CATEGORIZATION');
+    console.log('STARTING ENHANCED EQUIPMENT CATEGORIZATION WITH CORRECTED PARENT-CHILD LOGIC');
     console.log(`Input: ${equipmentList?.length || 0} raw equipment items`);
 
     if (!Array.isArray(equipmentList) || equipmentList.length === 0) {
