@@ -32,9 +32,47 @@ const safeCleanEquipmentCode = (value) => {
 };
 
 // CRITICAL HELPER: Determine if equipment is a parent
-const isParentEquipment = (parentCode) => {
+const isParentEquipment = (parentCode, equipmentNumber) => {
   const cleanParentCode = safeToString(parentCode).trim();
-  return !cleanParentCode || cleanParentCode === '-' || cleanParentCode === '';
+  const cleanEquipmentNumber = safeToString(equipmentNumber).trim();
+  
+  // No parent code or "-" = parent
+  if (!cleanParentCode || cleanParentCode === '-' || cleanParentCode === '') {
+    return true;
+  }
+  
+  // CRITICAL FIX: Self-referencing = parent (T10 parent of T10 = T10 IS parent)
+  if (cleanParentCode === cleanEquipmentNumber) {
+    return true;
+  }
+  
+  return false;
+};
+
+// ENHANCED: Cross-validate subsystem assignment using equipment code patterns
+const validateSubsystemAssignment = (equipmentNumber, excelSubsystem) => {
+  const cleanCode = safeToString(equipmentNumber).toUpperCase().trim();
+  
+  // Equipment code subsystem patterns (for validation/edge cases)
+  const codePatterns = {
+    'S2 | Z02': /^(\+UH1\d+|\+WC1\d+|\+GB[2-3]\d+|.*Z01.*)/i,
+    'S3 | Z03': /^(\+UH2\d+|\+WC2\d+|\+GB[4-5]\d+|.*Z02.*)/i,
+    'S4 | Z04': /^(\+UH13\d+|.*Z06.*)/i,
+    'S5 | Z05': /^(FWT\d+|EG01-6000-\d+|.*BESS.*)/i,
+    'S6 | Z06': /^(.*Z03.*)/i
+  };
+  
+  // Check if equipment code suggests different subsystem
+  for (const [subsystemCode, pattern] of Object.entries(codePatterns)) {
+    if (pattern.test(cleanCode)) {
+      if (excelSubsystem && !excelSubsystem.includes(subsystemCode.split('|')[2]?.trim())) {
+        console.log(`⚠️ Subsystem validation: ${cleanCode} code suggests ${subsystemCode} but Excel says "${excelSubsystem}"`);
+      }
+      break;
+    }
+  }
+  
+  return excelSubsystem; // Always trust Excel subsystem column
 };
 
 // Enhanced Pattern Matching Function - handles RegExp objects correctly
@@ -150,7 +188,10 @@ const processEquipmentList = (rawEquipmentList) => {
       subsystem_info: subsystemMapping[item.subsystem] || { code: 'S1', name: 'Main Subsystem' }
     }))
     .filter(item => {
-      const hasValidEquipmentNumber = item.equipment_number && item.equipment_number.trim() !== '';
+      // CRITICAL FIX: Filter out equipment with "-" or empty equipment numbers
+      const hasValidEquipmentNumber = item.equipment_number && 
+                                     item.equipment_number.trim() !== '' && 
+                                     item.equipment_number.trim() !== '-';
       return hasValidEquipmentNumber;
     });
 
@@ -161,7 +202,8 @@ const processEquipmentList = (rawEquipmentList) => {
   const processedTBCEquipment = tbcEquipment
     .map((item, index) => {
       const cleanCode = safeCleanEquipmentCode(item.equipment_number || item.equipment_code || '');
-      if (!cleanCode || cleanCode.trim() === '') {
+      // CRITICAL FIX: Filter out "-" and empty equipment codes from TBC
+      if (!cleanCode || cleanCode.trim() === '' || cleanCode.trim() === '-') {
         return null;
       }
       
@@ -176,7 +218,7 @@ const processEquipmentList = (rawEquipmentList) => {
     })
     .filter(item => item !== null);
 
-  console.log(`Processed ${processedTBCEquipment.length} TBC equipment items`);
+  console.log(`Processed ${processedTBCEquipment.length} TBC equipment items (filtered out equipment with "-" codes)`);
 
   // Step 5: Enhanced categorization with CORRECTED parent-child logic
   console.log('STEP 5: Enhanced Equipment Categorization with FIXED Parent-Child Logic');
@@ -184,20 +226,24 @@ const processEquipmentList = (rawEquipmentList) => {
     const category = determineEquipmentCategory(item.equipment_number);
     const categoryInfo = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
     
-    // CRITICAL FIX: Correct parent-child determination
-    const itemIsParent = isParentEquipment(item.parent_equipment_code);
+    // CRITICAL FIX: Use updated isParentEquipment with self-referencing check
+    const itemIsParent = isParentEquipment(item.parent_equipment_code, item.equipment_number);
+    
+    // ENHANCED: Cross-validate subsystem assignment
+    const validatedSubsystem = validateSubsystemAssignment(item.equipment_number, item.subsystem);
     
     const processedItem = {
       ...item,
       category: category,
       category_name: categoryInfo,
-      // FIXED: "-" means this IS a parent, not a child
+      // FIXED: Correct parent-child determination
       is_sub_equipment: !itemIsParent,
       parent_equipment: itemIsParent ? null : item.parent_equipment_code,
       level: itemIsParent ? 'parent' : 'child',
       commissioning_status: safeToString(item.commissioning_yn || 'Y').toUpperCase().trim(),
       description: safeToString(item.description || ''),
       plu_field: safeToString(item.plu_field || ''),
+      subsystem: validatedSubsystem,
       processing_notes: []
     };
 
@@ -229,11 +275,11 @@ const processEquipmentList = (rawEquipmentList) => {
   categorizedEquipment.forEach(item => {
     equipmentMap.set(item.equipment_number, item);
     
-    // FIXED: Only add to relationships if it's actually a child (not parent)
-    if (!isParentEquipment(item.parent_equipment_code)) {
+    // FIXED: Only add to relationships if it's actually a child (not parent or self-referencing)
+    if (item.is_sub_equipment && item.parent_equipment) {
       parentChildRelationships.push({
         child: item.equipment_number,
-        parent: item.parent_equipment_code,
+        parent: item.parent_equipment,
         child_category: item.category,
         child_item: item
       });
