@@ -165,33 +165,60 @@ const StartNewProject = () => {
         categoryStats: processedData.categoryStats
       });
 
-      // CRITICAL FIX: Properly structure data for WBS generator
+      // CRITICAL FIX: Debug the actual data structure
+      console.log('🔍 DEBUGGING EQUIPMENT PROCESSOR OUTPUT:');
+      console.log('processedData keys:', Object.keys(processedData));
+      console.log('categorizedEquipment array length:', processedData.categorizedEquipment?.length || 'UNDEFINED');
+      console.log('equipment array length:', processedData.equipment?.length || 'UNDEFINED');
+      console.log('First categorized item:', processedData.categorizedEquipment?.[0] || 'NONE');
+      console.log('First equipment item:', processedData.equipment?.[0] || 'NONE');
+
+      // CRITICAL FIX: Ensure we use the correct property with fallbacks
+      const actualEquipmentArray = processedData.categorizedEquipment || processedData.equipment || [];
+      const actualTBCArray = processedData.tbcEquipment || [];
+      const actualSubsystemMapping = processedData.subsystemMapping || {};
+
+      console.log('🔧 CRITICAL FIX VERIFICATION:');
+      console.log('actualEquipmentArray length:', actualEquipmentArray.length);
+      console.log('actualTBCArray length:', actualTBCArray.length);
+      console.log('actualSubsystemMapping keys:', Object.keys(actualSubsystemMapping));
+
+      // CRITICAL FIX: Properly structure data for WBS generator with bulletproof fallbacks
       const wbsInputData = {
-        // Pass the actual categorized equipment (the key fix!)
-        categorizedEquipment: processedData.categorizedEquipment || [],
+        // CRITICAL: Use multiple fallbacks to ensure data gets through
+        categorizedEquipment: actualEquipmentArray,
+        equipment: actualEquipmentArray, // Duplicate for compatibility
         
-        // Pass TBC equipment separately  
-        tbcEquipment: processedData.tbcEquipment || [],
+        // TBC equipment separately  
+        tbcEquipment: actualTBCArray,
         
-        // Pass subsystem mapping
-        subsystemMapping: processedData.subsystemMapping || {},
+        // Subsystem mapping
+        subsystemMapping: actualSubsystemMapping,
         
-        // Pass project metadata
+        // Project metadata
         projectName: processedData.projectName || '5737 Summerfield Project',
         
-        // Pass statistics for validation
+        // Statistics for validation
         stats: {
-          totalEquipment: processedData.totalProcessed,
-          categoryStats: processedData.categoryStats,
-          parentChildRelationships: processedData.parentChildRelationships
-        }
+          totalEquipment: processedData.totalProcessed || actualEquipmentArray.length,
+          categoryStats: processedData.categoryStats || {},
+          parentChildRelationships: processedData.parentChildRelationships || {}
+        },
+
+        // Additional fallback properties that wbsGenerator might expect
+        processed: processedData,
+        totalProcessed: processedData.totalProcessed || actualEquipmentArray.length
       };
 
-      console.log('WBS Input Data Structure:', {
-        categorizedEquipmentCount: wbsInputData.categorizedEquipment.length,
-        tbcEquipmentCount: wbsInputData.tbcEquipment.length,
-        subsystemCount: Object.keys(wbsInputData.subsystemMapping).length,
-        projectName: wbsInputData.projectName
+      console.log('🎯 FINAL WBS INPUT DATA VERIFICATION:');
+      console.log('wbsInputData structure:', {
+        categorizedEquipmentCount: wbsInputData.categorizedEquipment?.length || 0,
+        equipmentCount: wbsInputData.equipment?.length || 0,
+        tbcEquipmentCount: wbsInputData.tbcEquipment?.length || 0,
+        subsystemCount: Object.keys(wbsInputData.subsystemMapping || {}).length,
+        projectName: wbsInputData.projectName,
+        hasStats: !!wbsInputData.stats,
+        totalProcessed: wbsInputData.totalProcessed
       });
 
       // PHASE 3: Enhanced WBS Structure Generation
