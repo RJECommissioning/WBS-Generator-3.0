@@ -279,29 +279,16 @@ const determineEquipmentCategory = (equipmentNumber) => {
 };
 
 const processEquipmentList = (rawEquipmentList) => {
-  console.log('🚀 DEBUG EQUIPMENT PROCESSING - INVESTIGATING COMMISSIONING FILTERING');
+  console.log('🚀 FIXED DEBUG EQUIPMENT PROCESSING - CORRECT FIELD NAME');
   console.log(`📊 Input: ${rawEquipmentList.length} raw equipment items`);
 
-  // DEBUG: Check first 10 items for commissioning status
-  console.log('🔍 DEBUG: Checking commissioning status of first 10 items:');
-  rawEquipmentList.slice(0, 10).forEach((item, index) => {
-    const statusDirect = item.commissioning_yn;
-    const statusAlt = item['Commissioning (Y/N)'];
-    const statusAlt2 = item.commissioning;
-    
-    console.log(`   ${index + 1}. Equipment: ${item.equipment_number || 'unknown'}`);
-    console.log(`      commissioning_yn: "${statusDirect}"`);
-    console.log(`      Commissioning (Y/N): "${statusAlt}"`);
-    console.log(`      commissioning: "${statusAlt2}"`);
-    console.log(`      Available keys: ${Object.keys(item).join(', ')}`);
-    console.log(`      Sample item:`, item);
-  });
-
-  // ENHANCED commissioning status getter with DEBUG
+  // FIXED: commissioning status getter with CORRECT field name
   const getCommissioningStatus = (item) => {
-    const statusValue = item.commissioning_yn || 
-                       item['Commissioning (Y/N)'] ||
-                       item.commissioning ||
+    // CRITICAL FIX: Use the correct field name from file parser
+    const statusValue = item.commissioning_status ||  // ✅ This is the correct field!
+                       item.commissioning_yn ||       // Backup
+                       item['Commissioning (Y/N)'] || // Backup
+                       item.commissioning ||           // Backup
                        null;
     
     const processed = statusValue ? safeToString(statusValue).toUpperCase().trim() : 'NULL';
@@ -311,11 +298,11 @@ const processEquipmentList = (rawEquipmentList) => {
     return safeToString(statusValue).toUpperCase().trim();
   };
 
-  // Test the function on first few items
-  console.log('🧪 DEBUG: Testing commissioning status function on first 5 items:');
+  // Test the FIXED function on first few items
+  console.log('🧪 FIXED DEBUG: Testing commissioning status function on first 5 items:');
   rawEquipmentList.slice(0, 5).forEach((item, index) => {
     const result = getCommissioningStatus(item);
-    console.log(`   ${index + 1}. ${item.equipment_number}: status="${result}" (should be Y for electrical equipment)`);
+    console.log(`   ${index + 1}. ${item.equipment_number}: status="${result}" | commissioning_status="${item.commissioning_status}"`);
   });
 
   // Count items by status with detailed logging
@@ -350,14 +337,14 @@ const processEquipmentList = (rawEquipmentList) => {
     if (isExcluded) {
       excludedCount++;
       if (excludedCount <= 5) {
-        console.log(`DEBUG: Excluding item ${item.equipment_number}: status="${status}"`);
+        console.log(`DEBUG: Excluding item ${item.equipment_number}: status="${status}" | commissioning_status="${item.commissioning_status}"`);
       }
     }
     if (status === '') nullCount++;
     return isExcluded;
   });
 
-  console.log(`📊 DEBUG DETAILED Equipment separation:`);
+  console.log(`📊 FIXED DEBUG Equipment separation:`);
   console.log(`   ✅ Regular (Y): ${regularEquipment.length}`);
   console.log(`   ⏳ TBC: ${tbcEquipment.length}`);  
   console.log(`   ❌ Excluded: ${excludedEquipment.length}`);
@@ -365,18 +352,32 @@ const processEquipmentList = (rawEquipmentList) => {
 
   // Show samples of each category
   if (regularEquipment.length > 0) {
-    console.log('✅ Sample regular equipment (first 3):');
-    regularEquipment.slice(0, 3).forEach((item, index) => {
-      console.log(`   ${index + 1}. ${item.equipment_number} | ${item.commissioning_yn} | ${(item.description || '').substring(0, 40)}`);
+    console.log('✅ Sample regular equipment (first 5):');
+    regularEquipment.slice(0, 5).forEach((item, index) => {
+      console.log(`   ${index + 1}. ${item.equipment_number} | ${item.commissioning_status} | ${(item.description || '').substring(0, 40)}`);
     });
   } else {
-    console.log('❌ NO regular equipment found! This is the problem.');
+    console.log('❌ NO regular equipment found! Still a problem.');
   }
 
   if (excludedEquipment.length > 0) {
     console.log('❌ Sample excluded equipment (first 5):');
     excludedEquipment.slice(0, 5).forEach((item, index) => {
-      console.log(`   ${index + 1}. ${item.equipment_number} | commissioning_yn: "${item.commissioning_yn}" | ${(item.description || '').substring(0, 40)}`);
+      console.log(`   ${index + 1}. ${item.equipment_number} | commissioning_status: "${item.commissioning_status}" | ${(item.description || '').substring(0, 40)}`);
+    });
+  }
+
+  // Look for electrical equipment specifically  
+  const electricalEquipment = rawEquipmentList.filter(item => {
+    const code = item.equipment_number || '';
+    return code.match(/^[+\-][A-Z]{1,3}\d+/) || code.match(/^T\d+/) || code.match(/^[A-Z]{2}\d+/);
+  });
+
+  console.log(`🔌 Found ${electricalEquipment.length} electrical-pattern equipment items`);
+  if (electricalEquipment.length > 0) {
+    console.log('🔌 Sample electrical equipment:');
+    electricalEquipment.slice(0, 5).forEach((item, index) => {
+      console.log(`   ${index + 1}. ${item.equipment_number} | commissioning_status: "${item.commissioning_status}" | ${(item.description || '').substring(0, 40)}`);
     });
   }
 
