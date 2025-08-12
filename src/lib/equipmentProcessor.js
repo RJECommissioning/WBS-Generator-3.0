@@ -2,13 +2,12 @@ import { EQUIPMENT_PATTERNS, SUB_EQUIPMENT_PATTERNS, EQUIPMENT_CATEGORIES, COMMI
 import { stringHelpers, patternHelpers, arrayHelpers } from '../utils';
 
 /**
- * Equipment Processor - ENHANCED WITH SAFE DEDUPLICATION & PARENT-CHILD FIXES
- * 🚨 CRITICAL FIXES APPLIED:
- * - FIXED: Parent-child string matching normalization
- * - FIXED: SAFE equipment deduplication (only true duplicates removed)
- * - FIXED: Enhanced parent-child relationship detection
- * - ADDED: Flexible parent-child matching with case handling
- * - SAFE: Only removes items that match ALL fields (code+parent+description+subsystem)
+ * Equipment Processor - ENHANCED WITH COMMISSIONING FILTER FIX
+ * 🚨 CRITICAL FIX APPLIED:
+ * - FIXED: Removed dangerous 'Y' default in commissioning filtering
+ * - FIXED: Only processes equipment with explicit 'Y' commissioning status
+ * - ENHANCED: Safe equipment deduplication (only true duplicates removed)
+ * - ENHANCED: Parent-child relationship detection
  */
 
 // Helper function for safe string conversion
@@ -157,14 +156,14 @@ const analyzeParentChildRelationships = (equipmentList) => {
   
   equipmentList.forEach(item => {
     const equipmentCode = safeToString(item.equipment_number || '').trim();
-    const parentCode = safeCleanEquipmentCode(item.parent_equipment_number || item.parent_equipment_code || ''); // FIXED: Use cleaning function
+    const parentCode = safeCleanEquipmentCode(item.parent_equipment_number || item.parent_equipment_code || '');
     
     // Skip invalid equipment codes
     if (!equipmentCode || equipmentCode === '-') {
       return;
     }
     
-    // Determine if this is a parent or child
+    // CRITICAL: Check if parent_equipment_number is "-" (indicates parent equipment)
     if (!parentCode || parentCode === '-' || parentCode === equipmentCode) {
       // No parent or self-referencing = this is a parent equipment
       parentEquipment.add(equipmentCode);
@@ -279,28 +278,39 @@ const determineEquipmentCategory = (equipmentNumber) => {
   return '99'; // Unrecognized equipment
 };
 
-// CRITICAL FIX: Enhanced equipment processing with SAFE deduplication
+// CRITICAL FIX: Enhanced equipment processing with FIXED commissioning filtering
 const processEquipmentList = (rawEquipmentList) => {
-  console.log('🚀 ENHANCED EQUIPMENT PROCESSING WITH SAFE DEDUPLICATION');
+  console.log('🚀 ENHANCED EQUIPMENT PROCESSING WITH FIXED COMMISSIONING FILTERING');
   console.log(`📊 Input: ${rawEquipmentList.length} raw equipment items`);
 
-  // Step 1: Separate by commissioning status FIRST
+  // CRITICAL FIX: Enhanced commissioning status getter - NO DANGEROUS DEFAULT
+  const getCommissioningStatus = (item) => {
+    const statusValue = item.commissioning_yn || 
+                       item['Commissioning (Y/N)'] ||
+                       item.commissioning ||
+                       null; // CRITICAL: NO DEFAULT 'Y'!
+    
+    if (statusValue === null || statusValue === undefined) return '';
+    return safeToString(statusValue).toUpperCase().trim();
+  };
+
+  // Step 1: CRITICAL FIX - Separate by commissioning status WITHOUT dangerous default
   const tbcEquipment = rawEquipmentList.filter(item => {
-    const status = safeToString(item.commissioning_yn || item['Commissioning (Y/N)'] || 'Y').toUpperCase().trim();
+    const status = getCommissioningStatus(item);
     return status === 'TBC';
   });
 
   const regularEquipment = rawEquipmentList.filter(item => {
-    const status = safeToString(item.commissioning_yn || item['Commissioning (Y/N)'] || 'Y').toUpperCase().trim();
-    return status === 'Y';
+    const status = getCommissioningStatus(item);
+    return status === 'Y'; // ONLY explicit 'Y' values - no default!
   });
 
   const excludedEquipment = rawEquipmentList.filter(item => {
-    const status = safeToString(item.commissioning_yn || item['Commissioning (Y/N)'] || 'Y').toUpperCase().trim();
-    return status === 'N';
+    const status = getCommissioningStatus(item);
+    return status === 'N' || status === '' || status === null;
   });
 
-  console.log(`📊 Equipment separation: ${regularEquipment.length} regular, ${tbcEquipment.length} TBC, ${excludedEquipment.length} excluded`);
+  console.log(`📊 FIXED Equipment separation: ${regularEquipment.length} regular (Y), ${tbcEquipment.length} TBC, ${excludedEquipment.length} excluded (N/blank)`);
 
   // Step 2: Extract subsystems
   const subsystemMapping = {};
@@ -317,7 +327,7 @@ const processEquipmentList = (rawEquipmentList) => {
   const cleanedEquipment = regularEquipment
     .map(item => {
       const equipmentCode = safeCleanEquipmentCode(item.equipment_number || item['Equipment Number'] || '', 'processing');
-      const parentCode = safeCleanEquipmentCode(item.parent_equipment_number || item['Parent Equipment Number'] || ''); // FIXED: Use cleaning function
+      const parentCode = safeCleanEquipmentCode(item.parent_equipment_number || item.parent_equipment_code || '');
       
       return {
         ...item,
@@ -458,17 +468,17 @@ const processEquipmentList = (rawEquipmentList) => {
   };
 };
 
-// Main equipment categorization function - ENHANCED WITH SAFE DEDUPLICATION
+// Main equipment categorization function - ENHANCED WITH FIXED COMMISSIONING FILTERING
 export const categorizeEquipment = (equipmentList) => {
   try {
-    console.log('🚀 STARTING ENHANCED EQUIPMENT CATEGORIZATION WITH SAFE DEDUPLICATION');
+    console.log('🚀 STARTING ENHANCED EQUIPMENT CATEGORIZATION WITH FIXED COMMISSIONING FILTERING');
     console.log(`📊 Input: ${equipmentList?.length || 0} raw equipment items`);
 
     if (!Array.isArray(equipmentList) || equipmentList.length === 0) {
       throw new Error('Invalid equipment list provided');
     }
 
-    // CRITICAL FIX: Enhanced Equipment Processing with SAFE deduplication
+    // CRITICAL FIX: Enhanced Equipment Processing with FIXED commissioning filtering
     const processedData = processEquipmentList(equipmentList);
     
     console.log('✅ Enhanced equipment categorization completed:', {
@@ -521,7 +531,7 @@ export const categorizeEquipment = (equipmentList) => {
 // Filter equipment for WBS inclusion
 export const filterEquipmentForWBS = (equipment) => {
   return equipment.filter(item => {
-    const status = safeToString(item.commissioning_yn || item['Commissioning (Y/N)'] || 'Y').toUpperCase();
+    const status = safeToString(item.commissioning_yn || item['Commissioning (Y/N)'] || '').toUpperCase();
     return status === 'Y' || status === 'TBC';
   });
 };
