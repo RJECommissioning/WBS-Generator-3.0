@@ -386,7 +386,7 @@ const subEquipment = equipment.filter(item => {
 
   console.log(`     👨‍👦 Category ${categoryId}: ${parentEquipment.length} parents, ${subEquipment.length} children`);
 
-  // Sort parent equipment for consistent ordering
+// Sort parent equipment for consistent ordering
   const sortedParentEquipment = arrayHelpers.sortBy(parentEquipment, [
     { key: 'equipment_number', order: 'asc' }
   ]);
@@ -395,7 +395,11 @@ const subEquipment = equipment.filter(item => {
   let equipmentIndex = 1;
   const equipmentWBSMap = new Map(); // Track equipment WBS codes for parent-child linking
 
+  console.log(`     🔧 STARTING to add ${sortedParentEquipment.length} parent equipment items...`);
+
   sortedParentEquipment.forEach(parentItem => {
+    console.log(`       🔧 Processing item: ${parentItem.equipment_number} | description: "${(parentItem.description || '').substring(0, 30)}"`);
+    
     const equipmentWBSCode = `${parentCode}.${equipmentIndex}`;
     
     // Add main equipment item
@@ -417,12 +421,16 @@ const subEquipment = equipment.filter(item => {
       has_children: subEquipment.some(child => child.parent_equipment_code === parentItem.equipment_number)
     };
 
+    console.log(`       📋 Created WBS item: ${equipmentWBSCode} for ${parentItem.equipment_number}`);
+    
     wbsStructure.push(equipmentWBSItem);
     equipmentWBSMap.set(parentItem.equipment_number, equipmentWBSCode);
     
-    console.log(`       🔧 Added parent: ${equipmentWBSCode} - ${parentItem.equipment_number}`);
+    console.log(`       ✅ Added parent: ${equipmentWBSCode} - ${parentItem.equipment_number} to wbsStructure (total items: ${wbsStructure.length})`);
     equipmentIndex++;
   });
+
+  console.log(`     ✅ FINISHED adding parent equipment. Total WBS items now: ${wbsStructure.length}`);
 
   // Add child equipment under their parents (Level 5) - CRITICAL FIX for nesting
   const processedChildren = new Set();
