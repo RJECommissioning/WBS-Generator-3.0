@@ -2,12 +2,13 @@ import { EQUIPMENT_PATTERNS, SUB_EQUIPMENT_PATTERNS, EQUIPMENT_CATEGORIES, COMMI
 import { stringHelpers, patternHelpers, arrayHelpers } from '../utils';
 
 /**
- * Equipment Processor - CRITICALLY FIXED VERSION
- * 🚨 MAJOR FIXES APPLIED:
- * - FIXED: Parent-child detection logic completely rewritten
- * - FIXED: Equipment addition to WBS structure now working
- * - FIXED: Proper parent-child relationship mapping
- * - ADDED: Enhanced debugging for relationship detection
+ * Equipment Processor - ENHANCED WITH SAFE DEDUPLICATION & PARENT-CHILD FIXES
+ * 🚨 CRITICAL FIXES APPLIED:
+ * - FIXED: Parent-child string matching normalization
+ * - FIXED: SAFE equipment deduplication (only true duplicates removed)
+ * - FIXED: Enhanced parent-child relationship detection
+ * - ADDED: Flexible parent-child matching with case handling
+ * - SAFE: Only removes items that match ALL fields (code+parent+description+subsystem)
  */
 
 // Helper function for safe string conversion
@@ -26,9 +27,117 @@ const safeCleanEquipmentCode = (value, context = '') => {
   return stringValue.trim().toUpperCase();
 };
 
-// CRITICAL FIX: Completely rewritten parent-child detection logic
+// CRITICAL FIX: Enhanced parent-child string normalization
+const normalizeEquipmentCode = (code) => {
+  if (!code || code === '-') return '';
+  
+  return safeToString(code)
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, ' ')  // Normalize whitespace
+    .replace(/[^\w\s+\-]/g, '') // Remove special chars except +, -, letters, numbers
+    .trim();
+};
+
+// CRITICAL FIX: Flexible parent-child relationship matching
+const findParentMatch = (childParentCode, equipmentMap) => {
+  if (!childParentCode) return null;
+  
+  const normalizedChildParent = normalizeEquipmentCode(childParentCode);
+  
+  // First try exact match
+  if (equipmentMap.has(childParentCode)) {
+    return childParentCode;
+  }
+  
+  // Try normalized match
+  for (const [equipmentCode, item] of equipmentMap) {
+    const normalizedEquipmentCode = normalizeEquipmentCode(equipmentCode);
+    if (normalizedEquipmentCode === normalizedChildParent) {
+      return equipmentCode;
+    }
+  }
+  
+  // Try partial match (for cases like "FABRICATION & DESIGN" vs "Fabrication & Design")
+  for (const [equipmentCode, item] of equipmentMap) {
+    const normalizedEquipmentCode = normalizeEquipmentCode(equipmentCode);
+    
+    // Check if the core parts match (remove common words)
+    const childCore = normalizedChildParent.replace(/\b(FABRICATION|DESIGN|MANAGEMENT)\b/g, '').trim();
+    const parentCore = normalizedEquipmentCode.replace(/\b(FABRICATION|DESIGN|MANAGEMENT)\b/g, '').trim();
+    
+    if (childCore && parentCore && childCore === parentCore) {
+      return equipmentCode;
+    }
+  }
+  
+  return null;
+};
+
+// CRITICAL FIX: SAFE equipment deduplication logic - only removes TRUE duplicates
+const deduplicateEquipment = (equipmentList) => {
+  console.log('🔄 SAFE EQUIPMENT DEDUPLICATION (only true duplicates)');
+  console.log(`📊 Input: ${equipmentList.length} items (checking for true duplicates)`);
+  
+  // Create composite key for TRUE duplicate detection
+  const createDuplicateKey = (item) => {
+    return [
+      item.equipment_number?.trim() || '',
+      item.parent_equipment_code?.trim() || '',
+      item.description?.trim() || '',
+      item.subsystem?.trim() || ''
+    ].join('|||'); // Use separator that won't appear in data
+  };
+  
+  const uniqueItemsMap = new Map();
+  const trueDuplicates = [];
+  
+  equipmentList.forEach(item => {
+    const equipmentCode = item.equipment_number?.trim();
+    if (!equipmentCode || equipmentCode === '-') return;
+    
+    const duplicateKey = createDuplicateKey(item);
+    
+    if (uniqueItemsMap.has(duplicateKey)) {
+      // Found TRUE duplicate (same code + same parent + same description + same subsystem)
+      const existing = uniqueItemsMap.get(duplicateKey);
+      
+      // Keep the one with more complete data or better quality
+      const itemHasMoreData = (item.description?.length || 0) + (item.manufacturer?.length || 0) + (item.model?.length || 0);
+      const existingHasMoreData = (existing.description?.length || 0) + (existing.manufacturer?.length || 0) + (existing.model?.length || 0);
+      
+      if (itemHasMoreData > existingHasMoreData) {
+        trueDuplicates.push(existing);
+        uniqueItemsMap.set(duplicateKey, item);
+        console.log(`   🔄 Replaced duplicate: ${equipmentCode} (better data quality)`);
+      } else {
+        trueDuplicates.push(item);
+        console.log(`   🔄 Removed duplicate: ${equipmentCode} (keeping existing with better data)`);
+      }
+    } else {
+      uniqueItemsMap.set(duplicateKey, item);
+    }
+  });
+  
+  const deduplicatedList = Array.from(uniqueItemsMap.values());
+  
+  console.log(`✅ SAFE deduplication complete: ${deduplicatedList.length} unique items (removed ${trueDuplicates.length} TRUE duplicates)`);
+  
+  if (trueDuplicates.length > 0) {
+    console.log('📋 TRUE duplicates removed (identical in all key fields):');
+    trueDuplicates.slice(0, 5).forEach((dup, index) => {
+      console.log(`   ${index + 1}. ${dup.equipment_number} | ${dup.parent_equipment_code || 'no parent'} | ${(dup.description || '').substring(0, 30)}...`);
+    });
+  } else {
+    console.log('✅ No true duplicates found - all equipment items are unique');
+  }
+  
+  return deduplicatedList;
+};
+
+// CRITICAL FIX: Enhanced parent-child relationship analysis
 const analyzeParentChildRelationships = (equipmentList) => {
-  console.log('🔍 ANALYZING PARENT-CHILD RELATIONSHIPS');
+  console.log('🔍 ENHANCED PARENT-CHILD RELATIONSHIP ANALYSIS');
   
   // Create equipment lookup map
   const equipmentMap = new Map();
@@ -41,14 +150,14 @@ const analyzeParentChildRelationships = (equipmentList) => {
   
   console.log(`📊 Equipment map created: ${equipmentMap.size} equipment items`);
   
-  // Analyze relationships
+  // Analyze relationships with enhanced matching
   const relationships = [];
   const parentEquipment = new Set();
   const childEquipment = new Set();
   
   equipmentList.forEach(item => {
     const equipmentCode = safeToString(item.equipment_number || '').trim();
-    const parentCode = safeToString(item.parent_equipment_number || item.parent_equipment_code || '').trim();
+    const parentCode = safeCleanEquipmentCode(item.parent_equipment_number || item.parent_equipment_code || ''); // FIXED: Use cleaning function
     
     // Skip invalid equipment codes
     if (!equipmentCode || equipmentCode === '-') {
@@ -63,37 +172,48 @@ const analyzeParentChildRelationships = (equipmentList) => {
       // Has a different parent = this is child equipment
       childEquipment.add(equipmentCode);
       
+      // CRITICAL FIX: Use enhanced parent matching
+      const matchedParent = findParentMatch(parentCode, equipmentMap);
+      
       // Record the relationship
       relationships.push({
         child: equipmentCode,
         parent: parentCode,
+        matchedParent: matchedParent,
         childItem: item,
-        parentExists: equipmentMap.has(parentCode)
+        parentExists: matchedParent !== null
       });
       
-      // Mark the parent as a parent (if it exists in our list)
-      if (equipmentMap.has(parentCode)) {
-        parentEquipment.add(parentCode);
+      // Mark the matched parent as a parent (if found)
+      if (matchedParent) {
+        parentEquipment.add(matchedParent);
       }
     }
   });
   
-  console.log(`👨‍👦 Relationship analysis complete:`);
+  console.log(`👨‍👦 Enhanced relationship analysis complete:`);
   console.log(`   Parents: ${parentEquipment.size}`);
   console.log(`   Children: ${childEquipment.size}`);
   console.log(`   Relationships: ${relationships.length}`);
   
-  // Show sample relationships
+  // Show sample relationships with match status
   console.log(`\n📋 Sample Parent-Child Relationships (first 10):`);
   relationships.slice(0, 10).forEach((rel, index) => {
-    console.log(`   ${index + 1}. "${rel.child}" → "${rel.parent}" ${rel.parentExists ? '✅' : '❌'}`);
+    const matchStatus = rel.parentExists ? '✅' : '❌';
+    const matchInfo = rel.matchedParent ? ` (matched: ${rel.matchedParent})` : '';
+    console.log(`   ${index + 1}. "${rel.child}" → "${rel.parent}"${matchInfo} ${matchStatus}`);
   });
+  
+  // Count successful matches
+  const successfulMatches = relationships.filter(rel => rel.parentExists).length;
+  console.log(`🎯 Successful parent matches: ${successfulMatches}/${relationships.length}`);
   
   return {
     relationships,
     parentEquipment,
     childEquipment,
-    equipmentMap
+    equipmentMap,
+    successfulMatches
   };
 };
 
@@ -159,9 +279,9 @@ const determineEquipmentCategory = (equipmentNumber) => {
   return '99'; // Unrecognized equipment
 };
 
-// CRITICAL FIX: Completely rewritten equipment processing
+// CRITICAL FIX: Enhanced equipment processing with SAFE deduplication
 const processEquipmentList = (rawEquipmentList) => {
-  console.log('🚀 CRITICALLY FIXED EQUIPMENT PROCESSING');
+  console.log('🚀 ENHANCED EQUIPMENT PROCESSING WITH SAFE DEDUPLICATION');
   console.log(`📊 Input: ${rawEquipmentList.length} raw equipment items`);
 
   // Step 1: Separate by commissioning status FIRST
@@ -193,19 +313,16 @@ const processEquipmentList = (rawEquipmentList) => {
 
   console.log(`🏗️ Found ${subsystemNames.length} subsystems`);
 
-  // Step 3: CRITICAL FIX - Analyze parent-child relationships BEFORE processing
-  const relationshipAnalysis = analyzeParentChildRelationships(regularEquipment);
-
-  // Step 4: Process regular equipment with FIXED parent-child logic
+  // Step 3: Clean and normalize equipment data
   const cleanedEquipment = regularEquipment
     .map(item => {
       const equipmentCode = safeCleanEquipmentCode(item.equipment_number || item['Equipment Number'] || '', 'processing');
-      const parentCode = safeCleanEquipmentCode(item.parent_equipment_number || item['Parent Equipment Number'] || '', 'parent');
+      const parentCode = safeCleanEquipmentCode(item.parent_equipment_number || item['Parent Equipment Number'] || ''); // FIXED: Use cleaning function
       
       return {
         ...item,
         equipment_number: equipmentCode,
-        parent_equipment_code: parentCode === '-' ? null : parentCode,
+        parent_equipment_code: parentCode === '-' || parentCode === '' ? null : parentCode,
         description: safeToString(item.description || item.Description || ''),
         subsystem: item.subsystem || item.Subsystem,
         commissioning_status: 'Y'
@@ -217,9 +334,15 @@ const processEquipmentList = (rawEquipmentList) => {
       return equipmentCode !== '' && equipmentCode !== '-' && equipmentCode.length > 0;
     });
 
-  console.log(`✅ After validation: ${cleanedEquipment.length} regular equipment items`);
+  console.log(`✅ After initial cleaning: ${cleanedEquipment.length} regular equipment items`);
 
-  // Step 5: Process TBC equipment
+  // Step 4: CRITICAL FIX - SAFELY deduplicate equipment (only TRUE duplicates)
+  const deduplicatedEquipment = deduplicateEquipment(cleanedEquipment);
+
+  // Step 5: CRITICAL FIX - Analyze parent-child relationships AFTER deduplication
+  const relationshipAnalysis = analyzeParentChildRelationships(deduplicatedEquipment);
+
+  // Step 6: Process TBC equipment
   const processedTBCEquipment = tbcEquipment
     .map((item, index) => {
       const equipmentCode = safeCleanEquipmentCode(item.equipment_number || item['Equipment Number'] || '', 'tbc');
@@ -241,12 +364,12 @@ const processEquipmentList = (rawEquipmentList) => {
 
   console.log(`✅ Processed ${processedTBCEquipment.length} TBC equipment items`);
 
-  // Step 6: CRITICAL FIX - Enhanced categorization with PROPER parent-child flagging
-  const categorizedEquipment = cleanedEquipment.map((item) => {
+  // Step 7: CRITICAL FIX - Enhanced categorization with PROPER parent-child flagging
+  const categorizedEquipment = deduplicatedEquipment.map((item) => {
     const category = determineEquipmentCategory(item.equipment_number);
     const categoryInfo = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
     
-    // CRITICAL FIX: Use the relationship analysis to determine parent/child status
+    // CRITICAL FIX: Use the enhanced relationship analysis to determine parent/child status
     const isParent = relationshipAnalysis.parentEquipment.has(item.equipment_number);
     const isChild = relationshipAnalysis.childEquipment.has(item.equipment_number);
     
@@ -254,7 +377,7 @@ const processEquipmentList = (rawEquipmentList) => {
       ...item,
       category: category,
       category_name: categoryInfo,
-      // FIXED: Correct parent-child determination using relationship analysis
+      // FIXED: Correct parent-child determination using enhanced relationship analysis
       is_sub_equipment: isChild,
       is_parent_equipment: isParent,
       parent_equipment: isChild ? item.parent_equipment_code : null,
@@ -266,17 +389,17 @@ const processEquipmentList = (rawEquipmentList) => {
     return processedItem;
   });
 
-  // Step 7: CRITICAL FIX - Build proper parent-child relationships map
+  // Step 8: CRITICAL FIX - Build enhanced parent-child relationships map
   const parentChildRelationships = relationshipAnalysis.relationships.filter(rel => {
-    // Only include relationships where both parent and child exist in our cleaned equipment
-    const childExists = cleanedEquipment.find(item => item.equipment_number === rel.child);
-    const parentExists = cleanedEquipment.find(item => item.equipment_number === rel.parent);
+    // Only include relationships where both parent and child exist and match
+    const childExists = deduplicatedEquipment.find(item => item.equipment_number === rel.child);
+    const parentExists = rel.parentExists && rel.matchedParent;
     return childExists && parentExists;
   });
 
   console.log(`🔗 Built ${parentChildRelationships.length} valid parent-child relationships`);
 
-  // Step 8: Generate category statistics with FIXED counts
+  // Step 9: Generate category statistics with FIXED counts
   const categoryStats = {};
   
   // Initialize ALL standard categories
@@ -306,7 +429,7 @@ const processEquipmentList = (rawEquipmentList) => {
     }
   });
 
-  console.log('📊 Category Statistics Summary:');
+  console.log('📊 Enhanced Category Statistics Summary:');
   Object.entries(categoryStats).forEach(([categoryId, stats]) => {
     if (stats.count > 0) {
       console.log(`   ${categoryId} | ${stats.name}: ${stats.count} items (${stats.parent_equipment.length} parents, ${stats.child_equipment.length} children)`);
@@ -316,7 +439,8 @@ const processEquipmentList = (rawEquipmentList) => {
   const parentItems = categorizedEquipment.filter(item => !item.is_sub_equipment).length;
   const childItems = categorizedEquipment.filter(item => item.is_sub_equipment).length;
 
-  console.log(`🎯 CORRECTED FINAL COUNTS: ${parentItems} parents, ${childItems} children (Total: ${parentItems + childItems})`);
+  console.log(`🎯 ENHANCED FINAL COUNTS: ${parentItems} parents, ${childItems} children (Total: ${parentItems + childItems})`);
+  console.log(`🎯 Parent-child matches: ${relationshipAnalysis.successfulMatches}/${relationshipAnalysis.relationships.length}`);
 
   return {
     equipment: categorizedEquipment,
@@ -334,26 +458,27 @@ const processEquipmentList = (rawEquipmentList) => {
   };
 };
 
-// Main equipment categorization function - CRITICALLY FIXED
+// Main equipment categorization function - ENHANCED WITH SAFE DEDUPLICATION
 export const categorizeEquipment = (equipmentList) => {
   try {
-    console.log('🚀 STARTING CRITICALLY FIXED EQUIPMENT CATEGORIZATION');
+    console.log('🚀 STARTING ENHANCED EQUIPMENT CATEGORIZATION WITH SAFE DEDUPLICATION');
     console.log(`📊 Input: ${equipmentList?.length || 0} raw equipment items`);
 
     if (!Array.isArray(equipmentList) || equipmentList.length === 0) {
       throw new Error('Invalid equipment list provided');
     }
 
-    // CRITICAL FIX: Enhanced Equipment Processing
+    // CRITICAL FIX: Enhanced Equipment Processing with SAFE deduplication
     const processedData = processEquipmentList(equipmentList);
     
-    console.log('✅ Equipment categorization completed:', {
+    console.log('✅ Enhanced equipment categorization completed:', {
       original: processedData.original,
       final: processedData.final,
       parentItems: processedData.parentItems,
       childItems: processedData.childItems,
       relationships: processedData.parentChildRelationships.length,
-      categories: Object.keys(processedData.categoryStats || {}).length
+      categories: Object.keys(processedData.categoryStats || {}).length,
+      matchSuccess: `${processedData.relationshipAnalysis.successfulMatches}/${processedData.relationshipAnalysis.relationships.length}`
     });
 
     return {
@@ -373,7 +498,7 @@ export const categorizeEquipment = (equipmentList) => {
       subsystemMapping: processedData.subsystemMapping,
       projectName: '5737 Summerfield Project',
       
-      // CRITICAL: Parent-child relationships for WBS generator
+      // CRITICAL: Enhanced parent-child relationships for WBS generator
       parentChildRelationships: processedData.parentChildRelationships,
       relationshipAnalysis: processedData.relationshipAnalysis,
       
