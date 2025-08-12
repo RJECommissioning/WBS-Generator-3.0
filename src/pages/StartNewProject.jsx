@@ -183,32 +183,35 @@ const StartNewProject = () => {
       console.log('actualTBCArray length:', actualTBCArray.length);
       console.log('actualSubsystemMapping keys:', Object.keys(actualSubsystemMapping));
 
-      // CRITICAL FIX: Properly structure data for WBS generator with bulletproof fallbacks
-      const wbsInputData = {
-        // CRITICAL: Use multiple fallbacks to ensure data gets through
-        categorizedEquipment: actualEquipmentArray,
-        equipment: actualEquipmentArray, // Duplicate for compatibility
-        
-        // TBC equipment separately  
-        tbcEquipment: actualTBCArray,
-        
-        // Subsystem mapping
-        subsystemMapping: actualSubsystemMapping,
-        
-        // Project metadata
-        projectName: processedData.projectName || '5737 Summerfield Project',
-        
-        // Statistics for validation
-        stats: {
-          totalEquipment: processedData.totalProcessed || actualEquipmentArray.length,
-          categoryStats: processedData.categoryStats || {},
-          parentChildRelationships: processedData.parentChildRelationships || {}
-        },
-
-        // Additional fallback properties that wbsGenerator might expect
-        processed: processedData,
-        totalProcessed: processedData.totalProcessed || actualEquipmentArray.length
-      };
+    // CRITICAL FIX: Properly structure data for WBS generator with bulletproof fallbacks
+    const wbsInputData = {
+      // CRITICAL: Use multiple fallbacks to ensure data gets through
+      categorizedEquipment: actualEquipmentArray,
+      equipment: actualEquipmentArray, // Duplicate for compatibility
+      
+      // TBC equipment separately  
+      tbcEquipment: actualTBCArray,
+      
+      // Subsystem mapping
+      subsystemMapping: actualSubsystemMapping,
+      
+      // Project metadata
+      projectName: processedData.projectName || '5737 Summerfield Project',
+      
+      // CRITICAL FIX: Move categoryStats to top level
+      categoryStats: processedData.categoryStats || {},  // ← MOVED TO TOP LEVEL
+      
+      // Statistics for validation
+      stats: {
+        totalEquipment: processedData.totalProcessed || actualEquipmentArray.length,
+        parentChildRelationships: processedData.parentChildRelationships || {}
+        // ← categoryStats REMOVED from here
+      },
+    
+            // Additional fallback properties that wbsGenerator might expect
+            processed: processedData,
+            totalProcessed: processedData.totalProcessed || actualEquipmentArray.length
+          };
 
       console.log('🎯 FINAL WBS INPUT DATA VERIFICATION:');
       console.log('wbsInputData structure:', {
