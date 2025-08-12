@@ -374,8 +374,15 @@ const addEnhancedEquipmentItems = (wbsStructure, equipment, parentCode, category
   console.log(`     🔧 Adding enhanced equipment for category ${categoryId}: ${equipment.length} items`);
 
   // Separate parent equipment from sub-equipment
-  const parentEquipment = equipment.filter(item => !item.is_sub_equipment && !item.parent_equipment_code);
-  const subEquipment = equipment.filter(item => item.is_sub_equipment && item.parent_equipment_code);
+  const parentEquipment = equipment.filter(item => {
+  const parentCode = item.parent_equipment_code;
+  return !item.is_sub_equipment && (!parentCode || parentCode === '-' || parentCode === '');
+});
+
+const subEquipment = equipment.filter(item => {
+  const parentCode = item.parent_equipment_code;
+  return item.is_sub_equipment && parentCode && parentCode !== '-' && parentCode !== '';
+});
 
   console.log(`     👨‍👦 Category ${categoryId}: ${parentEquipment.length} parents, ${subEquipment.length} children`);
 
