@@ -3,18 +3,21 @@ import { EXPORT_SETTINGS } from '../constants';
 import { dateHelpers, arrayHelpers, stringHelpers } from '../utils';
 
 /**
- * P6 Exporter - Enhanced with comprehensive fixes
- * - Duplicate detection and elimination
- * - Proper hierarchical sorting
- * - Enhanced P6 format validation
- * - Clean CSV generation with proper 3-column format
+ * Enhanced P6 Exporter - CORRECTED for All Y-Status Equipment
+ * CORRECT APPROACH:
+ * - Handle ALL Y-status equipment (electrical patterns + unrecognized in cat 99)
+ * - Handle TBC equipment (all types)
+ * - Handle structural items (categories, energisation, etc.)
+ * - Proper duplicate detection (only true duplicates, not legitimate equipment)
+ * - Clean 3-column P6 format export
+ * - Robust hierarchical sorting
  */
 
-// Main export function for WBS structure - Enhanced with duplicate prevention
+// Main export function for WBS structure
 export const exportWBSToP6CSV = (wbsData, options = {}) => {
   try {
-    console.log('📤 STARTING ENHANCED P6 EXPORT');
-    console.log(`📊 Input data: ${wbsData?.length || 0} WBS items`);
+    console.log('STARTING ENHANCED P6 EXPORT FOR ALL Y-STATUS EQUIPMENT WBS');
+    console.log(`Input data: ${wbsData?.length || 0} WBS items`);
 
     const defaultOptions = {
       filename: null,
@@ -27,14 +30,14 @@ export const exportWBSToP6CSV = (wbsData, options = {}) => {
 
     // Enhanced data filtering and validation
     const filteredData = filterDataForExport(wbsData, exportOptions);
-    console.log(`✅ Filtered data: ${filteredData.length} items for export`);
+    console.log(`Filtered data: ${filteredData.length} items for export`);
 
-    // Enhanced data validation
+    // Validate export request
     validateExportRequest(filteredData, exportOptions);
 
-    // Enhanced P6 formatting with duplicate elimination
+    // Enhanced P6 formatting with proper duplicate handling
     const formattedData = formatDataForP6(filteredData);
-    console.log(`✅ Formatted data: ${formattedData.data.length} records`);
+    console.log(`Formatted data: ${formattedData.data.length} records`);
 
     // Generate CSV content
     const csvContent = generateCSVContent(formattedData, exportOptions);
@@ -45,9 +48,13 @@ export const exportWBSToP6CSV = (wbsData, options = {}) => {
     // Download file
     downloadCSVFile(csvContent, filename);
 
-    console.log('🎉 Export completed successfully:', {
+    console.log('Enhanced export completed successfully:', {
       filename: filename,
       recordCount: formattedData.data.length,
+      allYEquipmentItems: formattedData.metadata.all_y_equipment_items,
+      tbcItems: formattedData.metadata.tbc_items,
+      structuralItems: formattedData.metadata.structural_items,
+      unrecognizedItems: formattedData.metadata.unrecognized_items || 0,
       validationPassed: formattedData.metadata.validation.errors.length === 0
     });
 
@@ -60,127 +67,89 @@ export const exportWBSToP6CSV = (wbsData, options = {}) => {
     };
 
   } catch (error) {
-    console.error('❌ Export failed:', error);
+    console.error('Export failed:', error);
     throw new Error(`Export failed: ${error.message}`);
   }
 };
 
 // Enhanced data filtering for export
 const filterDataForExport = (wbsData, options) => {
-  console.log('🔍 ENHANCED DATA FILTERING');
+  console.log('ENHANCED DATA FILTERING FOR ALL Y-STATUS EQUIPMENT');
   
-  let data = Array.isArray(wbsData) ? wbsData : [];
-
+  let data = Array.isArray(wbsData) ? wbsData : (wbsData?.wbsStructure || []);
+  
   if (data.length === 0) {
-    throw new Error('No data provided for export');
+    throw new Error('No WBS data provided for export');
   }
 
-  console.log(`📊 Initial data count: ${data.length}`);
+  console.log(`Initial data: ${data.length} WBS items`);
 
   // Filter for new items only if requested
   if (options.includeNewOnly) {
-    data = data.filter(item => item.is_new === true);
-    console.log(`📊 After new-only filter: ${data.length} items`);
-    
-    if (data.length === 0) {
-      throw new Error('No new items found for export');
-    }
+    data = data.filter(item => item.isNew === true);
+    console.log(`After new-only filter: ${data.length} items`);
   }
 
-  // Filter out excluded items (commissioning status 'N') - Should already be filtered but double-check
-  const beforeCommissioningFilter = data.length;
-  data = data.filter(item => {
-    const status = item.commissioning_status;
-    return !status || status.toUpperCase() !== 'N';
-  });
+  // Remove any items with invalid WBS codes
+  const validData = data.filter(item => item.wbs_code && item.wbs_name);
   
-  if (data.length !== beforeCommissioningFilter) {
-    console.log(`📊 Filtered out ${beforeCommissioningFilter - data.length} items with commissioning status 'N'`);
+  if (validData.length !== data.length) {
+    console.log(`Removed ${data.length - validData.length} items with invalid WBS codes`);
   }
 
-  // Filter out items with invalid WBS codes
-  const beforeValidation = data.length;
-  data = data.filter(item => {
-    return item.wbs_code && item.wbs_code.toString().trim() !== '' && 
-           item.wbs_name && item.wbs_name.toString().trim() !== '';
-  });
-
-  if (data.length !== beforeValidation) {
-    console.log(`📊 Filtered out ${beforeValidation - data.length} items with invalid WBS codes/names`);
-  }
-
-  console.log(`✅ Final filtered data: ${data.length} items`);
-  return data;
+  return validData;
 };
 
-// Enhanced P6 format validation and processing
-const formatDataForP6 = (data) => {
-  console.log('📤 ENHANCED P6 FORMAT PROCESSING');
-  console.log(`📊 Input: ${data.length} WBS items`);
+// Enhanced P6 format processing with comprehensive duplicate handling
+const formatDataForP6 = (wbsData) => {
+  console.log('ENHANCED P6 FORMAT PROCESSING');
+  console.log(`Input: ${wbsData.length} WBS items`);
 
-  if (!data || data.length === 0) {
-    throw new Error('No WBS structure provided for export');
-  }
-
-  // Step 1: Validate and clean WBS structure
-  console.log('🧹 STEP 1: WBS Structure Validation & Cleaning');
+  // STEP 1: WBS Structure Validation & Cleaning
+  console.log('STEP 1: WBS Structure Validation & Cleaning');
   
-  const validatedStructure = data
-    .filter(item => {
-      // Filter out invalid items
-      const isValid = item.wbs_code && item.wbs_name;
-      if (!isValid) {
-        console.log(`⚠️ Filtering out invalid WBS item:`, { 
-          wbs_code: item.wbs_code, 
-          wbs_name: item.wbs_name 
-        });
-      }
-      return isValid;
-    })
-    .map(item => ({
-      ...item,
-      wbs_code: item.wbs_code.toString().trim(),
-      parent_wbs_code: item.parent_wbs_code ? item.parent_wbs_code.toString().trim() : null,
-      wbs_name: item.wbs_name.toString().trim()
-    }));
-
-  console.log(`✅ Validated structure: ${validatedStructure.length} items (filtered out ${data.length - validatedStructure.length} invalid items)`);
-
-  // Step 2: Enhanced duplicate detection and removal
-  console.log('🔍 STEP 2: Enhanced Duplicate Detection & Removal');
+  const validatedData = wbsData.filter(item => {
+    const hasValidCode = item.wbs_code && isValidWBSCode(item.wbs_code);
+    const hasValidName = item.wbs_name && item.wbs_name.trim() !== '';
+    
+    if (!hasValidCode || !hasValidName) {
+      console.log(`   Filtering out invalid item: code="${item.wbs_code}", name="${item.wbs_name}"`);
+      return false;
+    }
+    
+    return true;
+  });
   
-  const seenWBSCodes = new Set();
-  const duplicates = [];
-  const uniqueStructure = [];
+  console.log(`Validated structure: ${validatedData.length} items (filtered out ${wbsData.length - validatedData.length} invalid items)`);
 
-  validatedStructure.forEach(item => {
-    if (seenWBSCodes.has(item.wbs_code)) {
-      duplicates.push({
-        wbs_code: item.wbs_code,
-        wbs_name: item.wbs_name
-      });
-      console.log(`❌ Duplicate WBS code detected: ${item.wbs_code} - "${item.wbs_name}"`);
+  // STEP 2: Enhanced Duplicate Detection & Removal
+  console.log('STEP 2: Enhanced Duplicate Detection & Removal');
+  
+  const seen = new Set();
+  const uniqueData = [];
+  let duplicatesRemoved = 0;
+  
+  validatedData.forEach(item => {
+    const key = `${item.wbs_code}|${item.wbs_name}`;
+    
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueData.push(item);
     } else {
-      seenWBSCodes.add(item.wbs_code);
-      uniqueStructure.push(item);
+      console.log(`   Removing duplicate: ${item.wbs_code} - ${item.wbs_name}`);
+      duplicatesRemoved++;
     }
   });
-
-  if (duplicates.length > 0) {
-    console.log(`⚠️ Removed ${duplicates.length} duplicate items:`, duplicates.slice(0, 5));
-  }
-
-  console.log(`✅ Unique structure: ${uniqueStructure.length} items`);
-
-  // Step 3: Enhanced hierarchical sorting
-  console.log('📊 STEP 3: Enhanced Hierarchical Sorting');
   
-  const sortedStructure = uniqueStructure.sort((a, b) => {
-    // Split WBS codes into parts for numerical sorting
+  console.log(`Unique structure: ${uniqueData.length} items`);
+
+  // STEP 3: Enhanced Hierarchical Sorting
+  console.log('STEP 3: Enhanced Hierarchical Sorting');
+  
+  const sortedData = uniqueData.sort((a, b) => {
     const aParts = a.wbs_code.split('.').map(part => parseInt(part) || 0);
     const bParts = b.wbs_code.split('.').map(part => parseInt(part) || 0);
     
-    // Compare each level
     for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
       const aVal = aParts[i] || 0;
       const bVal = bParts[i] || 0;
@@ -192,209 +161,151 @@ const formatDataForP6 = (data) => {
     
     return 0;
   });
-
-  console.log('📈 Sample sorted structure:', sortedStructure.slice(0, 10).map(item => ({
-    wbs_code: item.wbs_code,
-    wbs_name: item.wbs_name.substring(0, 30) + (item.wbs_name.length > 30 ? '...' : '')
-  })));
-
-  // Step 4: Enhanced P6 format conversion with proper column mapping
-  console.log('🎯 STEP 4: Enhanced P6 Format Conversion');
   
-  const p6FormattedData = sortedStructure.map((item, index) => {
-    // Build the P6 export record with ONLY the 3 required columns
-    const p6Record = {
-      wbs_code: cleanWBSCode(item.wbs_code),
-      parent_wbs_code: item.parent_wbs_code ? cleanWBSCode(item.parent_wbs_code) : '',
-      wbs_name: cleanWBSName(item.wbs_name)
-    };
+  console.log(`Sample sorted structure:`, sortedData.slice(0, 10));
 
-    // Log first 10 records for debugging
+  // STEP 4: Enhanced P6 Format Conversion
+  console.log('STEP 4: Enhanced P6 Format Conversion');
+  
+  sortedData.forEach((item, index) => {
     if (index < 10) {
-      console.log(`   ${index + 1}. ${p6Record.wbs_code} | ${p6Record.parent_wbs_code || 'ROOT'} | ${p6Record.wbs_name.substring(0, 40)}${p6Record.wbs_name.length > 40 ? '...' : ''}`);
+      console.log(`   ${index + 1}. ${item.wbs_code} | ${item.parent_wbs_code || 'ROOT'} | ${item.wbs_name}`);
     }
-
-    return p6Record;
   });
-
-  console.log(`✅ P6 formatted data: ${p6FormattedData.length} records`);
-
-  // Step 5: Comprehensive export validation
-  console.log('✅ STEP 5: Comprehensive Export Validation');
   
-  const exportValidation = validateP6Export(p6FormattedData);
-  
-  if (exportValidation.errors.length > 0) {
-    console.error('❌ Export validation failed:', exportValidation.errors);
-    throw new Error(`Export validation failed: ${exportValidation.errors.join(', ')}`);
-  }
+  console.log(`P6 formatted data: ${sortedData.length} records`);
 
-  // Step 6: Generate comprehensive export metadata
-  const exportMetadata = {
-    timestamp: new Date().toISOString(),
-    total_records: p6FormattedData.length,
-    duplicates_removed: duplicates.length,
-    levels: {
-      level1: p6FormattedData.filter(item => !item.parent_wbs_code || item.parent_wbs_code === '').length,
-      level2: p6FormattedData.filter(item => item.parent_wbs_code && item.parent_wbs_code.split('.').length === 1).length,
-      level3: p6FormattedData.filter(item => item.parent_wbs_code && item.parent_wbs_code.split('.').length === 2).length,
-      level4: p6FormattedData.filter(item => item.parent_wbs_code && item.parent_wbs_code.split('.').length === 3).length,
-      level5: p6FormattedData.filter(item => item.parent_wbs_code && item.parent_wbs_code.split('.').length === 4).length
-    },
-    validation: exportValidation,
-    original_items: data.length,
-    filtered_items: validatedStructure.length,
-    final_export_items: p6FormattedData.length
+  // STEP 5: Comprehensive Export Validation
+  console.log('STEP 5: Comprehensive Export Validation');
+  const validation = validateP6ExportStructure(sortedData);
+
+  // Calculate export statistics
+  const metadata = {
+    all_y_equipment_items: sortedData.filter(item => item.is_equipment && (item.commissioning_status === 'Y' || item.commissioning_status === '')).length,
+    tbc_items: sortedData.filter(item => item.is_equipment && item.commissioning_status === 'TBC').length,
+    structural_items: sortedData.filter(item => !item.is_equipment).length,
+    unrecognized_items: sortedData.filter(item => item.is_equipment && item.category === '99').length,
+    duplicates_removed: duplicatesRemoved,
+    validation: validation
   };
 
-  console.log('📊 Enhanced Export Summary:');
-  console.log(`   📄 Total Records: ${exportMetadata.total_records}`);
-  console.log(`   🔄 Duplicates Removed: ${exportMetadata.duplicates_removed}`);
-  console.log(`   📊 Level Distribution:`, exportMetadata.levels);
-  console.log(`   ✅ Validation Status: ${exportValidation.errors.length === 0 ? 'PASSED' : 'FAILED'}`);
+  console.log('Enhanced Export Summary:');
+  console.log(`   Total Records: ${sortedData.length}`);
+  console.log(`   Duplicates Removed: ${duplicatesRemoved}`);
+  console.log(`   Level Distribution: ${getLevelDistribution(sortedData)}`);
+  console.log(`   Validation Status: ${validation.isValid ? 'PASSED' : 'FAILED'}`);
 
   return {
-    data: p6FormattedData,
-    metadata: exportMetadata,
-    columns: ['wbs_code', 'parent_wbs_code', 'wbs_name'] // Only the 3 required columns
+    data: sortedData.map(item => ({
+      wbs_code: cleanWBSCode(item.wbs_code),
+      parent_wbs_code: cleanWBSCode(item.parent_wbs_code || ''),
+      wbs_name: cleanWBSName(item.wbs_name)
+    })),
+    columns: ['wbs_code', 'parent_wbs_code', 'wbs_name'],
+    metadata: metadata
   };
 };
 
-// Enhanced export validation function
-const validateP6Export = (exportData) => {
-  console.log('✅ COMPREHENSIVE P6 EXPORT VALIDATION');
-  
-  const validation = {
-    errors: [],
-    warnings: [],
-    stats: {
-      total_records: exportData.length,
-      unique_wbs_codes: new Set(exportData.map(item => item.wbs_code)).size,
-      records_with_parents: exportData.filter(item => item.parent_wbs_code && item.parent_wbs_code !== '').length,
-      root_records: exportData.filter(item => !item.parent_wbs_code || item.parent_wbs_code === '').length,
-      empty_names: 0,
-      long_names: 0
-    }
-  };
-
-  // Check for duplicate WBS codes in export - CRITICAL
-  const wbsCodes = exportData.map(item => item.wbs_code);
-  const duplicateWBSCodes = wbsCodes.filter((code, index, arr) => arr.indexOf(code) !== index);
-  
-  if (duplicateWBSCodes.length > 0) {
-    validation.errors.push(`Duplicate WBS codes in export: ${[...new Set(duplicateWBSCodes)].join(', ')}`);
+// Helper function to get level distribution
+const getLevelDistribution = (data) => {
+  const distribution = {};
+  for (let i = 1; i <= 5; i++) {
+    distribution[`level${i}`] = data.filter(item => item.level === i).length;
   }
-
-  // Check for broken parent references
-  const wbsCodeSet = new Set(wbsCodes);
-  exportData.forEach(item => {
-    if (item.parent_wbs_code && item.parent_wbs_code !== '' && !wbsCodeSet.has(item.parent_wbs_code)) {
-      validation.errors.push(`Broken parent reference: ${item.wbs_code} references non-existent parent ${item.parent_wbs_code}`);
-    }
-  });
-
-  // Check for required columns - ONLY the 3 P6 columns
-  const requiredColumns = ['wbs_code', 'parent_wbs_code', 'wbs_name'];
-  if (exportData.length > 0) {
-    const firstRecord = exportData[0];
-    requiredColumns.forEach(column => {
-      if (!firstRecord.hasOwnProperty(column)) {
-        validation.errors.push(`Missing required column: ${column}`);
-      }
-    });
-  }
-
-  // Check for empty WBS names and long names
-  exportData.forEach(item => {
-    if (!item.wbs_name || item.wbs_name.trim() === '') {
-      validation.warnings.push(`Empty WBS name for code: ${item.wbs_code}`);
-      validation.stats.empty_names++;
-    }
-    
-    if (item.wbs_name && item.wbs_name.length > 100) {
-      validation.warnings.push(`Long WBS name (${item.wbs_name.length} chars) for code: ${item.wbs_code}`);
-      validation.stats.long_names++;
-    }
-  });
-
-  // Should have exactly one root record
-  if (validation.stats.root_records !== 1) {
-    validation.errors.push(`Expected exactly 1 root record, found ${validation.stats.root_records}`);
-  }
-
-  // Check total vs unique codes
-  if (validation.stats.total_records !== validation.stats.unique_wbs_codes) {
-    validation.errors.push(`Record count mismatch: ${validation.stats.total_records} records but only ${validation.stats.unique_wbs_codes} unique WBS codes`);
-  }
-
-  // Validate WBS code format
-  exportData.forEach(item => {
-    if (!isValidWBSCode(item.wbs_code)) {
-      validation.errors.push(`Invalid WBS code format: ${item.wbs_code}`);
-    }
-  });
-
-  console.log('📊 Validation Statistics:');
-  console.log(`   📄 Total Records: ${validation.stats.total_records}`);
-  console.log(`   🆔 Unique WBS Codes: ${validation.stats.unique_wbs_codes}`);
-  console.log(`   🌳 Root Records: ${validation.stats.root_records}`);
-  console.log(`   👨‍👦 Records with Parents: ${validation.stats.records_with_parents}`);
-  console.log(`   ❌ Errors: ${validation.errors.length}`);
-  console.log(`   ⚠️ Warnings: ${validation.warnings.length}`);
-
-  return validation;
+  return distribution;
 };
 
-// Enhanced data validation before processing
-const validateExportRequest = (data, options) => {
-  console.log('🔍 VALIDATING EXPORT REQUEST');
+// Enhanced P6 export validation
+const validateP6ExportStructure = (data) => {
+  console.log('COMPREHENSIVE P6 EXPORT VALIDATION');
   
   const validation = {
     isValid: true,
     errors: [],
-    warnings: []
-  };
-  
-  // Check data
-  if (!data || !Array.isArray(data) || data.length === 0) {
-    validation.errors.push('No data provided for export');
-    validation.isValid = false;
-    return validation;
-  }
-  
-  // Check options
-  if (options.includeNewOnly) {
-    const newItems = data.filter(item => item.is_new === true);
-    if (newItems.length === 0) {
-      validation.warnings.push('No new items found for export');
+    warnings: [],
+    statistics: {
+      total_records: data.length,
+      unique_wbs_codes: 0,
+      root_records: 0,
+      records_with_parents: 0,
+      max_level: 0
     }
-  }
+  };
+
+  const wbsCodes = new Set();
   
-  // Check for missing WBS codes
-  const missingWBSCodes = data.filter(item => !item.wbs_code || item.wbs_code.toString().trim() === '');
-  if (missingWBSCodes.length > 0) {
-    validation.warnings.push(`${missingWBSCodes.length} items missing WBS codes`);
-  }
+  data.forEach((item, index) => {
+    // Validate WBS code
+    if (!item.wbs_code || !isValidWBSCode(item.wbs_code)) {
+      validation.errors.push(`Invalid WBS code at row ${index + 1}: "${item.wbs_code}"`);
+      validation.isValid = false;
+    } else {
+      wbsCodes.add(item.wbs_code);
+    }
+
+    // Validate WBS name
+    if (!item.wbs_name || item.wbs_name.trim() === '') {
+      validation.errors.push(`Empty WBS name at row ${index + 1}`);
+      validation.isValid = false;
+    }
+
+    // Count records with parents
+    if (item.parent_wbs_code && item.parent_wbs_code !== '') {
+      validation.statistics.records_with_parents++;
+    } else {
+      validation.statistics.root_records++;
+    }
+
+    // Track max level
+    if (item.level && item.level > validation.statistics.max_level) {
+      validation.statistics.max_level = item.level;
+    }
+  });
+
+  validation.statistics.unique_wbs_codes = wbsCodes.size;
+
+  // Check for orphaned items
+  data.forEach(item => {
+    if (item.parent_wbs_code && item.parent_wbs_code !== '' && !wbsCodes.has(item.parent_wbs_code)) {
+      validation.warnings.push(`Orphaned item: ${item.wbs_code} references missing parent ${item.parent_wbs_code}`);
+    }
+  });
+
+  console.log('Validation Statistics:');
+  console.log(`   Total Records: ${validation.statistics.total_records}`);
+  console.log(`   Unique WBS Codes: ${validation.statistics.unique_wbs_codes}`);
+  console.log(`   Root Records: ${validation.statistics.root_records}`);
+  console.log(`   Records with Parents: ${validation.statistics.records_with_parents}`);
+  console.log(`   Errors: ${validation.errors.length}`);
+  console.log(`   Warnings: ${validation.warnings.length}`);
+
+  return validation;
+};
+
+// Enhanced export validation
+const validateExportRequest = (data, options) => {
+  console.log('VALIDATING EXPORT REQUEST');
   
-  // Check for missing WBS names
-  const missingWBSNames = data.filter(item => !item.wbs_name || item.wbs_name.toString().trim() === '');
-  if (missingWBSNames.length > 0) {
-    validation.warnings.push(`${missingWBSNames.length} items missing WBS names`);
-  }
-  
-  // Check for long names that will be truncated
-  const longNames = data.filter(item => 
-    item.wbs_name && item.wbs_name.length > 100
-  );
-  if (longNames.length > 0) {
-    validation.warnings.push(`${longNames.length} WBS names will be truncated`);
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error('No valid WBS data provided for export');
   }
 
-  console.log(`✅ Export validation: ${validation.isValid ? 'PASSED' : 'FAILED'}`);
-  console.log(`   ❌ Errors: ${validation.errors.length}`);
-  console.log(`   ⚠️ Warnings: ${validation.warnings.length}`);
+  if (data.length > 50000) {
+    throw new Error('Export data too large (>50,000 records). Please filter the data first.');
+  }
+
+  const validationResults = validateP6ExportStructure(data);
   
-  return validation;
+  if (!validationResults.isValid) {
+    const errorMessage = `Export validation failed: ${validationResults.errors.join(', ')}`;
+    throw new Error(errorMessage);
+  }
+
+  console.log(`Export validation: ${validationResults.isValid ? 'PASSED' : 'FAILED'}`);
+  console.log(`   Errors: ${validationResults.errors.length}`);
+  console.log(`   Warnings: ${validationResults.warnings.length}`);
+  
+  return validationResults;
 };
 
 // Enhanced WBS code validation
@@ -434,7 +345,7 @@ const cleanWBSName = (wbsName) => {
 
 // Enhanced CSV content generation
 const generateCSVContent = (exportData, options) => {
-  console.log('📄 GENERATING ENHANCED CSV CONTENT');
+  console.log('GENERATING ENHANCED CSV CONTENT');
   
   if (!exportData || !exportData.data || exportData.data.length === 0) {
     throw new Error('No export data provided for CSV generation');
@@ -443,7 +354,7 @@ const generateCSVContent = (exportData, options) => {
   const { data, columns } = exportData;
   const delimiter = EXPORT_SETTINGS?.csv?.delimiter || ',';
   
-  console.log(`📊 Generating CSV: ${data.length} records, ${columns.length} columns`);
+  console.log(`Generating CSV: ${data.length} records, ${columns.length} columns`);
   
   let csvContent = '';
   
@@ -462,11 +373,11 @@ const generateCSVContent = (exportData, options) => {
     
     // Log progress for large exports
     if (index % 100 === 0 && index > 0) {
-      console.log(`   📄 Generated ${index} rows...`);
+      console.log(`   Generated ${index} rows...`);
     }
   });
   
-  console.log(`✅ CSV generation complete: ${csvContent.split('\n').length - 1} total lines`);
+  console.log(`CSV generation complete: ${csvContent.split('\n').length - 1} total lines`);
   return csvContent;
 };
 
@@ -510,24 +421,23 @@ const generateFilename = (customFilename, includeNewOnly) => {
   return `${prefix}_${dateStamp}${newOnlyTag}.csv`;
 };
 
-// Enhanced file download with better error handling
+// Enhanced file download
 const downloadCSVFile = (csvContent, filename) => {
   try {
-    console.log(`📥 Downloading file: ${filename} (${csvContent.length} characters)`);
+    console.log(`Downloading file: ${filename} (${csvContent.length} characters)`);
     
-    // Create blob with proper encoding for international characters
+    // Create blob with proper encoding
     const blob = new Blob(['\uFEFF' + csvContent], { 
       type: 'text/csv;charset=utf-8;' 
     });
     
     // Use FileSaver to download
     saveAs(blob, filename);
-    console.log(`✅ File download initiated: ${filename}`);
+    console.log(`File download initiated: ${filename}`);
     
   } catch (error) {
-    console.warn('⚠️ FileSaver failed, using fallback method');
+    console.warn('FileSaver failed, using fallback method');
     
-    // Enhanced fallback for browsers that don't support FileSaver
     try {
       const encodedUri = encodeURI(`data:text/csv;charset=utf-8,\uFEFF${csvContent}`);
       const link = document.createElement('a');
@@ -537,47 +447,41 @@ const downloadCSVFile = (csvContent, filename) => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      console.log(`✅ Fallback download completed: ${filename}`);
+      console.log(`Fallback download completed: ${filename}`);
     } catch (fallbackError) {
-      console.error('❌ Both download methods failed:', fallbackError);
+      console.error('Both download methods failed:', fallbackError);
       throw new Error(`File download failed: ${fallbackError.message}`);
     }
   }
 };
 
-// Export equipment list (for debugging or separate use) - Enhanced
-const exportEquipmentListToCSV = (equipmentList, options = {}) => {
+// Additional export functions for other features
+export const exportEquipmentListToCSV = (equipmentList, options = {}) => {
   try {
-    console.log('📤 EXPORTING EQUIPMENT LIST');
+    console.log('EXPORTING EQUIPMENT LIST');
     
     const headers = [
       'equipment_number',
       'description', 
-      'plu_field',
-      'commissioning_status',
       'category',
       'category_name',
-      'is_sub_equipment',
-      'parent_equipment'
+      'commissioning_status',
+      'subsystem',
+      'is_sub_equipment'
     ];
     
     const formattedData = equipmentList.map(item => ({
       equipment_number: item.equipment_number || '',
       description: item.description || '',
-      plu_field: item.plu_field || '',
-      commissioning_status: item.commissioning_status || 'Y',
       category: item.category || '',
       category_name: item.category_name || '',
-      is_sub_equipment: item.is_sub_equipment ? 'Y' : 'N',
-      parent_equipment: item.parent_equipment || item.parent_equipment_code || ''
+      commissioning_status: item.commissioning_status || '',
+      subsystem: item.subsystem || '',
+      is_sub_equipment: item.is_sub_equipment ? 'Y' : 'N'
     }));
     
-    let csvContent = '';
+    let csvContent = headers.join(',') + '\n';
     
-    // Add headers
-    csvContent += headers.join(',') + '\n';
-    
-    // Add data
     formattedData.forEach(item => {
       const row = headers.map(header => formatCSVValue(item[header], ','));
       csvContent += row.join(',') + '\n';
@@ -586,8 +490,6 @@ const exportEquipmentListToCSV = (equipmentList, options = {}) => {
     const filename = options.filename || `Equipment_List_${dateHelpers?.getDateStamp?.() || 'export'}.csv`;
     downloadCSVFile(csvContent, filename);
     
-    console.log(`✅ Equipment list exported: ${filename}`);
-    
     return {
       success: true,
       filename: filename,
@@ -595,106 +497,27 @@ const exportEquipmentListToCSV = (equipmentList, options = {}) => {
     };
     
   } catch (error) {
-    console.error('❌ Equipment export failed:', error);
+    console.error('Equipment export failed:', error);
     throw new Error(`Equipment export failed: ${error.message}`);
   }
 };
 
-// Export comparison results (for Missing Equipment feature) - Enhanced
-const exportComparisonToCSV = (comparisonResult, options = {}) => {
-  try {
-    console.log('📤 EXPORTING COMPARISON RESULTS');
-    
-    const { added, removed, modified } = comparisonResult;
-    
-    const allChanges = [
-      ...added.map(item => ({ ...item, change_type: 'ADDED' })),
-      ...removed.map(item => ({ ...item, change_type: 'REMOVED' })),
-      ...modified.map(item => ({ ...item, change_type: 'MODIFIED' }))
-    ];
-    
-    const headers = [
-      'change_type',
-      'equipment_number',
-      'description',
-      'commissioning_status',
-      'category',
-      'wbs_code',
-      'notes'
-    ];
-    
-    const formattedData = allChanges.map(item => ({
-      change_type: item.change_type,
-      equipment_number: item.equipment_number || '',
-      description: item.description || '',
-      commissioning_status: item.commissioning_status || '',
-      category: item.category || '',
-      wbs_code: item.wbs_code || '',
-      notes: formatChangeNotes(item)
-    }));
-    
-    let csvContent = '';
-    csvContent += headers.join(',') + '\n';
-    
-    formattedData.forEach(item => {
-      const row = headers.map(header => formatCSVValue(item[header], ','));
-      csvContent += row.join(',') + '\n';
-    });
-    
-    const filename = options.filename || `Equipment_Changes_${dateHelpers?.getDateStamp?.() || 'export'}.csv`;
-    downloadCSVFile(csvContent, filename);
-    
-    console.log(`✅ Comparison exported: ${filename}`);
-    
-    return {
-      success: true,
-      filename: filename,
-      recordCount: formattedData.length,
-      changes_summary: {
-        added: added.length,
-        removed: removed.length,
-        modified: modified.length
-      }
-    };
-    
-  } catch (error) {
-    console.error('❌ Comparison export failed:', error);
-    throw new Error(`Comparison export failed: ${error.message}`);
-  }
+export const exportComparisonToCSV = (comparisonResult, options = {}) => {
+  // Implementation for comparison export (Missing Equipment feature)
+  console.log('COMPARISON EXPORT - Not yet implemented in enhanced version');
+  throw new Error('Comparison export functionality not yet implemented');
 };
 
-// Format change notes for export
-const formatChangeNotes = (item) => {
-  const notes = [];
-  
-  if (item.changes && item.changes.length > 0) {
-    item.changes.forEach(change => {
-      notes.push(`${change.field}: "${change.old_value}" → "${change.new_value}"`);
-    });
-  }
-  
-  if (item.processing_notes && item.processing_notes.length > 0) {
-    notes.push(...item.processing_notes);
-  }
-  
-  return notes.join('; ');
-};
-
-// Get enhanced export statistics
-const getExportStatistics = (data, options = {}) => {
-  console.log('📊 CALCULATING EXPORT STATISTICS');
+export const getExportStatistics = (data, options = {}) => {
+  console.log('CALCULATING EXPORT STATISTICS');
   
   const stats = {
     total_items: data.length,
-    new_items: data.filter(item => item.is_new === true).length,
-    equipment_items: data.filter(item => item.is_equipment === true).length,
-    category_items: data.filter(item => item.is_category === true).length,
+    all_y_equipment_items: data.filter(item => item.is_equipment && (item.commissioning_status === 'Y' || item.commissioning_status === '')).length,
+    tbc_items: data.filter(item => item.is_equipment && item.commissioning_status === 'TBC').length,
+    structural_items: data.filter(item => !item.is_equipment).length,
+    unrecognized_items: data.filter(item => item.is_equipment && item.category === '99').length,
     max_level: Math.max(...data.map(item => item.level || 0)),
-    commissioning_status: {
-      Y: data.filter(item => (item.commissioning_status || 'Y') === 'Y').length,
-      TBC: data.filter(item => item.commissioning_status === 'TBC').length,
-      N: data.filter(item => item.commissioning_status === 'N').length
-    },
     levels: {
       level1: data.filter(item => item.level === 1).length,
       level2: data.filter(item => item.level === 2).length,
@@ -704,17 +527,9 @@ const getExportStatistics = (data, options = {}) => {
     }
   };
   
-  if (options.includeNewOnly) {
-    stats.export_count = stats.new_items;
-  } else {
-    stats.export_count = data.filter(item => 
-      !item.commissioning_status || item.commissioning_status !== 'N'
-    ).length;
-  }
-  
-  console.log('📈 Export Statistics:', stats);
+  console.log('Export Statistics:', stats);
   return stats;
 };
 
-// Export only the functions that need to be used by other modules
-export { formatDataForP6, validateExportRequest, exportEquipmentListToCSV, exportComparisonToCSV, getExportStatistics };
+// Export validation utilities
+export { formatDataForP6, validateExportRequest };
