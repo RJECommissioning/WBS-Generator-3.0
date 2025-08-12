@@ -673,7 +673,7 @@ const convertLegacyFormat = (categorizedEquipment) => {
   };
 };
 
-// Generate empty WBS structure with all categories
+// Generate empty WBS structure with all categories - FIXED to include E | Energisation
 const generateEmptyWBSStructure = (projectName) => {
   console.log('📄 Generating empty WBS structure with all standard categories');
   
@@ -738,6 +738,46 @@ const generateEmptyWBSStructure = (projectName) => {
     categoryIndex++;
   });
 
+  // CRITICAL FIX: Add E | Energisation section (MANDATORY for every project)
+  console.log('⚡ Adding E | Energisation to empty WBS structure');
+  
+  wbsStructure.push({
+    wbs_code: '1.4',
+    parent_wbs_code: '1',
+    wbs_name: 'E | Energisation',
+    level: 2,
+    color: BRAND_COLORS.level2 || WBS_LEVEL_COLORS[2],
+    is_equipment: false,
+    is_category: true
+  });
+
+  // System subsection
+  wbsStructure.push({
+    wbs_code: '1.4.1',
+    parent_wbs_code: '1.4',
+    wbs_name: 'System',
+    level: 3,
+    color: BRAND_COLORS.level3 || WBS_LEVEL_COLORS[3],
+    is_equipment: false,
+    is_category: true
+  });
+
+  // Energisation phases
+  ['Energisation', 'Pre-Energisation', 'Post Energisation'].forEach((phase, index) => {
+    wbsStructure.push({
+      wbs_code: `1.4.1.${index + 1}`,
+      parent_wbs_code: '1.4.1',
+      wbs_name: phase,
+      equipment_number: phase.replace(/\s+/g, ''),
+      level: 4,
+      color: BRAND_COLORS.level4 || WBS_LEVEL_COLORS[4],
+      is_equipment: true,
+      is_category: false
+    });
+  });
+
+  console.log(`✅ Created empty WBS with E | Energisation: ${wbsStructure.length} total items`);
+
   return {
     wbsStructure: wbsStructure,
     wbs_structure: wbsStructure, // Compatibility alias
@@ -745,7 +785,7 @@ const generateEmptyWBSStructure = (projectName) => {
     equipment_count: 0,
     tbc_count: 0,
     subsystem_count: 1,
-    max_level: 3
+    max_level: 4 // Updated since we now go to level 4
   };
 };
 
