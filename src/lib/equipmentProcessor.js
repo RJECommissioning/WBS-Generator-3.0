@@ -278,193 +278,122 @@ const determineEquipmentCategory = (equipmentNumber) => {
   return '99'; // Unrecognized equipment
 };
 
-// CRITICAL FIX: Enhanced equipment processing with FIXED commissioning filtering
 const processEquipmentList = (rawEquipmentList) => {
-  console.log('🚀 ENHANCED EQUIPMENT PROCESSING WITH FIXED COMMISSIONING FILTERING');
+  console.log('🚀 DEBUG EQUIPMENT PROCESSING - INVESTIGATING COMMISSIONING FILTERING');
   console.log(`📊 Input: ${rawEquipmentList.length} raw equipment items`);
 
-  // CRITICAL FIX: Enhanced commissioning status getter - NO DANGEROUS DEFAULT
+  // DEBUG: Check first 10 items for commissioning status
+  console.log('🔍 DEBUG: Checking commissioning status of first 10 items:');
+  rawEquipmentList.slice(0, 10).forEach((item, index) => {
+    const statusDirect = item.commissioning_yn;
+    const statusAlt = item['Commissioning (Y/N)'];
+    const statusAlt2 = item.commissioning;
+    
+    console.log(`   ${index + 1}. Equipment: ${item.equipment_number || 'unknown'}`);
+    console.log(`      commissioning_yn: "${statusDirect}"`);
+    console.log(`      Commissioning (Y/N): "${statusAlt}"`);
+    console.log(`      commissioning: "${statusAlt2}"`);
+    console.log(`      Available keys: ${Object.keys(item).join(', ')}`);
+    console.log(`      Sample item:`, item);
+  });
+
+  // ENHANCED commissioning status getter with DEBUG
   const getCommissioningStatus = (item) => {
     const statusValue = item.commissioning_yn || 
                        item['Commissioning (Y/N)'] ||
                        item.commissioning ||
-                       null; // CRITICAL: NO DEFAULT 'Y'!
+                       null;
+    
+    const processed = statusValue ? safeToString(statusValue).toUpperCase().trim() : 'NULL';
+    console.log(`DEBUG getCommissioningStatus for ${item.equipment_number}: raw="${statusValue}" processed="${processed}"`);
     
     if (statusValue === null || statusValue === undefined) return '';
     return safeToString(statusValue).toUpperCase().trim();
   };
 
-  // Step 1: CRITICAL FIX - Separate by commissioning status WITHOUT dangerous default
+  // Test the function on first few items
+  console.log('🧪 DEBUG: Testing commissioning status function on first 5 items:');
+  rawEquipmentList.slice(0, 5).forEach((item, index) => {
+    const result = getCommissioningStatus(item);
+    console.log(`   ${index + 1}. ${item.equipment_number}: status="${result}" (should be Y for electrical equipment)`);
+  });
+
+  // Count items by status with detailed logging
+  let yCount = 0;
+  let tbcCount = 0; 
+  let excludedCount = 0;
+  let nullCount = 0;
+
   const tbcEquipment = rawEquipmentList.filter(item => {
     const status = getCommissioningStatus(item);
-    return status === 'TBC';
+    const isTBC = status === 'TBC';
+    if (isTBC) {
+      tbcCount++;
+      console.log(`DEBUG: Found TBC item: ${item.equipment_number}`);
+    }
+    return isTBC;
   });
 
   const regularEquipment = rawEquipmentList.filter(item => {
     const status = getCommissioningStatus(item);
-    return status === 'Y'; // ONLY explicit 'Y' values - no default!
+    const isY = status === 'Y';
+    if (isY) {
+      yCount++;
+      if (yCount <= 5) console.log(`DEBUG: Found Y item: ${item.equipment_number} | ${item.description}`);
+    }
+    return isY;
   });
 
   const excludedEquipment = rawEquipmentList.filter(item => {
     const status = getCommissioningStatus(item);
-    return status === 'N' || status === '' || status === null;
+    const isExcluded = status === 'N' || status === '' || status === null;
+    if (isExcluded) {
+      excludedCount++;
+      if (excludedCount <= 5) {
+        console.log(`DEBUG: Excluding item ${item.equipment_number}: status="${status}"`);
+      }
+    }
+    if (status === '') nullCount++;
+    return isExcluded;
   });
 
-  console.log(`📊 FIXED Equipment separation: ${regularEquipment.length} regular (Y), ${tbcEquipment.length} TBC, ${excludedEquipment.length} excluded (N/blank)`);
+  console.log(`📊 DEBUG DETAILED Equipment separation:`);
+  console.log(`   ✅ Regular (Y): ${regularEquipment.length}`);
+  console.log(`   ⏳ TBC: ${tbcEquipment.length}`);  
+  console.log(`   ❌ Excluded: ${excludedEquipment.length}`);
+  console.log(`   🔍 Empty/null status: ${nullCount}`);
 
-  // Step 2: Extract subsystems
-  const subsystemMapping = {};
-  const subsystemNames = [...new Set(regularEquipment.concat(tbcEquipment).map(item => item.subsystem || item.Subsystem).filter(Boolean))];
-  
-  subsystemNames.forEach((subsystem, index) => {
-    const subsystemKey = `S${index + 1} | Z${String(index + 1).padStart(2, '0')}`;
-    subsystemMapping[subsystem] = subsystemKey;
-  });
-
-  console.log(`🏗️ Found ${subsystemNames.length} subsystems`);
-
-  // Step 3: Clean and normalize equipment data
-  const cleanedEquipment = regularEquipment
-    .map(item => {
-      const equipmentCode = safeCleanEquipmentCode(item.equipment_number || item['Equipment Number'] || '', 'processing');
-      const parentCode = safeCleanEquipmentCode(item.parent_equipment_number || item.parent_equipment_code || '');
-      
-      return {
-        ...item,
-        equipment_number: equipmentCode,
-        parent_equipment_code: parentCode === '-' || parentCode === '' ? null : parentCode,
-        description: safeToString(item.description || item.Description || ''),
-        subsystem: item.subsystem || item.Subsystem,
-        commissioning_status: 'Y'
-      };
-    })
-    .filter(item => {
-      // Only filter out EMPTY or EXACTLY "-" equipment codes
-      const equipmentCode = item.equipment_number?.trim() || '';
-      return equipmentCode !== '' && equipmentCode !== '-' && equipmentCode.length > 0;
+  // Show samples of each category
+  if (regularEquipment.length > 0) {
+    console.log('✅ Sample regular equipment (first 3):');
+    regularEquipment.slice(0, 3).forEach((item, index) => {
+      console.log(`   ${index + 1}. ${item.equipment_number} | ${item.commissioning_yn} | ${(item.description || '').substring(0, 40)}`);
     });
+  } else {
+    console.log('❌ NO regular equipment found! This is the problem.');
+  }
 
-  console.log(`✅ After initial cleaning: ${cleanedEquipment.length} regular equipment items`);
+  if (excludedEquipment.length > 0) {
+    console.log('❌ Sample excluded equipment (first 5):');
+    excludedEquipment.slice(0, 5).forEach((item, index) => {
+      console.log(`   ${index + 1}. ${item.equipment_number} | commissioning_yn: "${item.commissioning_yn}" | ${(item.description || '').substring(0, 40)}`);
+    });
+  }
 
-  // Step 4: CRITICAL FIX - SAFELY deduplicate equipment (only TRUE duplicates)
-  const deduplicatedEquipment = deduplicateEquipment(cleanedEquipment);
-
-  // Step 5: CRITICAL FIX - Analyze parent-child relationships AFTER deduplication
-  const relationshipAnalysis = analyzeParentChildRelationships(deduplicatedEquipment);
-
-  // Step 6: Process TBC equipment
-  const processedTBCEquipment = tbcEquipment
-    .map((item, index) => {
-      const equipmentCode = safeCleanEquipmentCode(item.equipment_number || item['Equipment Number'] || '', 'tbc');
-      
-      if (!equipmentCode || equipmentCode.trim() === '' || equipmentCode.trim() === '-') {
-        return null;
-      }
-      
-      return {
-        ...item,
-        equipment_number: equipmentCode,
-        description: safeToString(item.description || item.Description || ''),
-        commissioning_status: 'TBC',
-        subsystem: item.subsystem || item.Subsystem,
-        tbc_sequence: `TBC${(index + 1).toString().padStart(3, '0')}`
-      };
-    })
-    .filter(item => item !== null);
-
-  console.log(`✅ Processed ${processedTBCEquipment.length} TBC equipment items`);
-
-  // Step 7: CRITICAL FIX - Enhanced categorization with PROPER parent-child flagging
-  const categorizedEquipment = deduplicatedEquipment.map((item) => {
-    const category = determineEquipmentCategory(item.equipment_number);
-    const categoryInfo = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
-    
-    // CRITICAL FIX: Use the enhanced relationship analysis to determine parent/child status
-    const isParent = relationshipAnalysis.parentEquipment.has(item.equipment_number);
-    const isChild = relationshipAnalysis.childEquipment.has(item.equipment_number);
-    
-    const processedItem = {
-      ...item,
-      category: category,
-      category_name: categoryInfo,
-      // FIXED: Correct parent-child determination using enhanced relationship analysis
-      is_sub_equipment: isChild,
-      is_parent_equipment: isParent,
-      parent_equipment: isChild ? item.parent_equipment_code : null,
-      level: isChild ? 'child' : 'parent',
-      commissioning_status: 'Y',
-      subsystem_info: subsystemMapping[item.subsystem] || { code: 'S1', name: 'Main Subsystem' }
-    };
-
-    return processedItem;
-  });
-
-  // Step 8: CRITICAL FIX - Build enhanced parent-child relationships map
-  const parentChildRelationships = relationshipAnalysis.relationships.filter(rel => {
-    // Only include relationships where both parent and child exist and match
-    const childExists = deduplicatedEquipment.find(item => item.equipment_number === rel.child);
-    const parentExists = rel.parentExists && rel.matchedParent;
-    return childExists && parentExists;
-  });
-
-  console.log(`🔗 Built ${parentChildRelationships.length} valid parent-child relationships`);
-
-  // Step 9: Generate category statistics with FIXED counts
-  const categoryStats = {};
-  
-  // Initialize ALL standard categories
-  Object.entries(EQUIPMENT_CATEGORIES).forEach(([categoryId, categoryName]) => {
-    categoryStats[categoryId] = {
-      name: categoryName,
-      count: 0,
-      equipment: [],
-      parent_equipment: [],
-      child_equipment: []
-    };
-  });
-
-  // Populate category statistics with CORRECTED logic
-  categorizedEquipment.forEach(item => {
-    const category = item.category || '99';
-    if (categoryStats[category]) {
-      categoryStats[category].count++;
-      categoryStats[category].equipment.push(item);
-      
-      // FIXED: Use the corrected parent/child flags
-      if (item.is_sub_equipment) {
-        categoryStats[category].child_equipment.push(item);
-      } else {
-        categoryStats[category].parent_equipment.push(item);
-      }
-    }
-  });
-
-  console.log('📊 Enhanced Category Statistics Summary:');
-  Object.entries(categoryStats).forEach(([categoryId, stats]) => {
-    if (stats.count > 0) {
-      console.log(`   ${categoryId} | ${stats.name}: ${stats.count} items (${stats.parent_equipment.length} parents, ${stats.child_equipment.length} children)`);
-    }
-  });
-
-  const parentItems = categorizedEquipment.filter(item => !item.is_sub_equipment).length;
-  const childItems = categorizedEquipment.filter(item => item.is_sub_equipment).length;
-
-  console.log(`🎯 ENHANCED FINAL COUNTS: ${parentItems} parents, ${childItems} children (Total: ${parentItems + childItems})`);
-  console.log(`🎯 Parent-child matches: ${relationshipAnalysis.successfulMatches}/${relationshipAnalysis.relationships.length}`);
-
+  // Return simplified data for now
   return {
-    equipment: categorizedEquipment,
-    tbcEquipment: processedTBCEquipment,
-    subsystemMapping: subsystemMapping,
+    equipment: [],
+    tbcEquipment: [],
+    subsystemMapping: {},
     original: rawEquipmentList.length,
     afterCommissioningFilter: regularEquipment.length + tbcEquipment.length,
-    final: categorizedEquipment.length,
-    tbcCount: processedTBCEquipment.length,
-    parentItems: parentItems,
-    childItems: childItems,
-    categoryStats: categoryStats,
-    parentChildRelationships: parentChildRelationships,
-    relationshipAnalysis: relationshipAnalysis
+    final: regularEquipment.length,
+    tbcCount: tbcEquipment.length,
+    parentItems: 0,
+    childItems: 0,
+    categoryStats: {},
+    parentChildRelationships: [],
+    relationshipAnalysis: { successfulMatches: 0, relationships: [] }
   };
 };
 
