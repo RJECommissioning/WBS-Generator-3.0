@@ -233,7 +233,13 @@ const processEquipmentList = (rawEquipmentList) => {
         commissioning_status: 'Y'
       };
     })
-    .filter(item => isValidEquipmentCode(item.equipment_number)); // Only remove truly invalid codes
+    .filter(item => {
+  const isValid = isValidEquipmentCode(item.equipment_number);
+  if (!isValid) {
+    console.log(`❌ REJECTED: "${item.equipment_number}" (original: "${item.equipment_number}")"`);
+  }
+  return isValid;
+});
 
   // Step 3: LENIENT TBC processing (accept any reasonable equipment)
   const allValidTBCEquipment = tbcStatusItems
