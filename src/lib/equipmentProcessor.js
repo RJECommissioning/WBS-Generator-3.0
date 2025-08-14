@@ -315,21 +315,22 @@ const processEquipmentList = (rawEquipmentList) => {
     };
   }
 
-  // Populate category statistics from actual equipment
-  categorizedEquipment.forEach(item => {
-    const category = item.category;
-    const equipmentCode = cleanEquipmentCode(item.equipment_number);
+// Populate category statistics from actual equipment
+categorizedEquipment.forEach(item => {
+  const category = item.category;
+  const equipmentCode = cleanEquipmentCode(item.equipment_number);
+  
+  if (categoryStats[category]) {
+    categoryStats[category].count++;
+    categoryStats[category].equipment.push(item); // ADD THIS LINE
     
-    if (categoryStats[category]) {
-      categoryStats[category].count++;
-      
-      if (item.is_sub_equipment) {
-        categoryStats[category].child_equipment.push(equipmentCode);
-      } else {
-        categoryStats[category].parent_equipment.push(equipmentCode);
-      }
+    if (item.is_sub_equipment) {
+      categoryStats[category].child_equipment.push(equipmentCode);
+    } else {
+      categoryStats[category].parent_equipment.push(equipmentCode);
     }
-  });
+  }
+});
 
   console.log('ALL Equipment Categories (including unrecognized):');
   Object.entries(categoryStats).forEach(([categoryId, stats]) => {
