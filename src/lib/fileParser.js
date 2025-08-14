@@ -346,14 +346,9 @@ export const parseFile = async (file) => {
           ...(await parseCSVEquipmentList(content))
         };
         
-      case 'xer':
-        return {
-          type: 'xer',
-          hasData: false,
-          data: [],
-          dataLength: 0,
-          originalHeaders: []
-        };
+     case 'xer':
+      return await parseXERFile(content);
+      
         
       case 'existing_project':
         return {
