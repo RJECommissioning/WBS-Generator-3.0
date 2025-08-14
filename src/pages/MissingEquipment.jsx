@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import FileUpload from '../components/FileUpload';
-import WBSTreeVisualization from '../components/WBSTreeVisualization';
+import WBSVisualization from '../components/WBSVisualization';
 import ExportButton from '../components/ExportButton';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { parseFile } from '../lib/fileParser';
@@ -302,7 +302,7 @@ const MissingEquipment = () => {
                 </div>
 
                 <div className="mb-4 max-h-96 overflow-y-auto border rounded">
-                  <WBSTreeVisualization 
+                  <WBSVisualization 
                     wbsData={existingProject.wbsStructure}
                     title="Existing Project Structure"
                     showNewBadges={false}
@@ -395,7 +395,7 @@ const MissingEquipment = () => {
               {/* Combined WBS Visualization */}
               {combinedWBS && (
                 <div className="mb-6 max-h-96 overflow-y-auto border rounded">
-                  <WBSTreeVisualization 
+                  <WBSVisualization 
                     wbsData={combinedWBS}
                     title="Combined Project Structure (Existing + New)"
                     showNewBadges={true}
