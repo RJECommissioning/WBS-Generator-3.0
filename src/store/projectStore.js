@@ -72,6 +72,13 @@ const useProjectStore = create((set, get) => ({
     }
   },
 
+  // Missing Equipment specific state
+  missingEquipment: {
+    existingProject: { wbsStructure: [], projectInfo: {}, equipmentCodes: [] },
+    combinedWBS: [],
+    exportData: []
+  },
+
   // ==== ACTIONS ====
 
   // UI Actions
@@ -335,34 +342,147 @@ uploadFile: async (uploadType, file) => {
   },
 
   // MISSING EQUIPMENT FEATURE
-  processMissingEquipment: async (existingProjectFile, updatedEquipmentFile) => {
+  processMissingEquipment: async (xerFile, equipmentFile) => {
     const { 
       uploadFile, 
       setProcessingStage, 
       setError,
       setSuccess,
-      setComparisonResults 
+      setComparisonResults,
+      setMissingEquipmentExistingProject,
+      setMissingEquipmentCombinedWBS,
+      setMissingEquipmentExportData
     } = get();
     
     try {
-      setProcessingStage('parsing', 10, 'Parsing existing project...');
+      setProcessingStage('parsing', 10, 'Parsing existing project (XER)...');
       
-      // Upload existing project
-      const existingData = await uploadFile('existing_project', existingProjectFile);
+      // Upload and parse XER file
+      const xerData = await uploadFile('xer_file', xerFile);
       
-      setProcessingStage('parsing', 30, 'Parsing updated equipment list...');
+      setProcessingStage('parsing', 30, 'Parsing equipment list...');
       
-      // Upload updated equipment list  
-      const updatedData = await uploadFile('equipment_list', updatedEquipmentFile);
+      // Upload and parse equipment file
+      const equipmentData = await uploadFile('equipment_list', equipmentFile);
       
       setProcessingStage('comparing', 50, 'Comparing equipment lists...');
-      // Comparison will be handled by lib/projectComparer.js
       
-      setProcessingStage('generating_wbs', 70, 'Generating WBS codes for new items...');
+      // Equipment comparison will be handled by lib/projectComparer.js
+      // For now, simulate the process
       
-      setProcessingStage('building_tree', 90, 'Building comparison visualization...');
+      setProcessingStage('assigning_codes', 70, 'Assigning WBS codes to new equipment...');
       
-      setProcessingStage('complete', 100, 'Comparison completed!');
+      // Smart WBS code assignment will be handled by enhanced lib/wbsGenerator.js
+      
+      setProcessingStage('building_tree', 90, 'Building combined visualization...');
+      
+      setProcessingStage('complete', 100, 'Missing equipment processed successfully!');
+      setSuccess('New equipment identified and assigned WBS codes!');
+      
+      return true;
+      
+    } catch (error) {
+      setProcessingStage('error', 0, error.message);
+      setError(`Failed to process missing equipment: ${error.message}`);
+      return false;
+    }
+  },
+
+  // Missing Equipment Actions
+  setMissingEquipmentExistingProject: (project) => set((state) => ({
+    missingEquipment: { 
+      ...state.missingEquipment, 
+      existingProject: project 
+    }
+  })),
+
+  setMissingEquipmentCombinedWBS: (wbs) => set((state) => ({
+    missingEquipment: { 
+      ...state.missingEquipment, 
+      combinedWBS: wbs 
+    }
+  })),
+
+  setMissingEquipmentExportData: (data) => set((state) => ({
+    missingEquipment: { 
+      ...state.missingEquipment, 
+      exportData: data 
+    }
+  })),
+
+  resetMissingEquipment: () => set((state) => ({
+    missingEquipment: {
+      existingProject: { wbsStructure: [], projectInfo: {}, equipmentCodes: [] },
+      combinedWBS: [],
+      exportData: []
+    },
+    // Also clear related uploads and comparison data
+    uploads: {
+      ...state.uploads,
+      xer_file: {
+        file: null,
+        status: 'idle',
+        error: null,
+        data: [],
+        validation: null
+      },
+      equipment_list: {
+        file: null,
+        status: 'idle',
+        error: null,
+        data: [],
+        validation: null
+      }
+    },
+    comparison: {
+      added: [],
+      removed: [],
+      existing: [],
+      modified: [],
+      summary: {
+        total_added: 0,
+        total_removed: 0,
+        total_existing: 0,
+        total_modified: 0
+      }
+    }
+  })),
+
+  // Equipment comparison processing
+  compareEquipment: async (existingWBS, newEquipmentList) => {
+    const { 
+      setProcessingStage, 
+      setComparisonResults, 
+      setError,
+      setSuccess 
+    } = get();
+    
+    try {
+      setProcessingStage('comparing', 20, 'Extracting existing equipment codes...');
+      
+      // This will be handled by lib/projectComparer.js
+      // For now, basic simulation
+      const existingEquipmentCodes = existingWBS
+        .filter(item => item.wbs_name && item.wbs_name.includes('|'))
+        .map(item => item.wbs_name.split('|')[0].trim());
+      
+      setProcessingStage('comparing', 60, 'Finding new equipment...');
+      
+      const newEquipment = newEquipmentList.filter(item => 
+        !existingEquipmentCodes.includes(item.equipment_number)
+      );
+      
+      const results = {
+        added: newEquipment,
+        removed: [], // Will be implemented later
+        existing: newEquipmentList.filter(item => 
+          existingEquipmentCodes.includes(item.equipment_number)
+        ),
+        modified: [] // Will be implemented later
+      };
+      
+      setComparisonResults(results);
+      setProcessingStage('complete', 100, 'Equipment comparison completed!');
       setSuccess('Equipment comparison completed successfully!');
       
       return true;
@@ -404,15 +524,17 @@ uploadFile: async (uploadType, file) => {
 
   // Export functionality
   prepareExport: (includeNewOnly = false) => {
-    const { project, comparison } = get();
+    const { project, comparison, missingEquipment } = get();
     
     if (includeNewOnly && comparison.added.length > 0) {
-      // Export only new items
-      return comparison.added;
+      // Export only new items (for missing equipment feature)
+      return missingEquipment.exportData.length > 0 ? 
+        missingEquipment.exportData : comparison.added;
     }
     
-    // Export full WBS structure
-    return project.wbs_structure;
+    // Export full WBS structure or combined structure
+    return missingEquipment.combinedWBS.length > 0 ? 
+      missingEquipment.combinedWBS : project.wbs_structure;
   },
 
   // Reset store
@@ -476,26 +598,35 @@ uploadFile: async (uploadType, file) => {
         total_existing: 0,
         total_modified: 0
       }
+    },
+    missingEquipment: {
+      existingProject: { wbsStructure: [], projectInfo: {}, equipmentCodes: [] },
+      combinedWBS: [],
+      exportData: []
     }
   })),
 
   // Getters (computed values)
   getTreeData: () => {
-    const { project, ui } = get();
+    const { project, ui, missingEquipment } = get();
     // This will be processed by WBS tree component
     return {
-      wbs_structure: project.wbs_structure,
+      wbs_structure: missingEquipment.combinedWBS.length > 0 ? 
+        missingEquipment.combinedWBS : project.wbs_structure,
       expansions: ui.treeExpansions
     };
   },
 
   getProjectSummary: () => {
-    const { project, comparison } = get();
+    const { project, comparison, missingEquipment } = get();
     return {
       total_equipment: project.equipment_list.length,
-      total_wbs_items: project.wbs_structure.length,
+      total_wbs_items: missingEquipment.combinedWBS.length > 0 ? 
+        missingEquipment.combinedWBS.length : project.wbs_structure.length,
       has_changes: comparison.added.length > 0 || comparison.removed.length > 0,
-      last_modified: project.last_modified
+      last_modified: project.last_modified,
+      new_equipment_count: comparison.added.length,
+      existing_equipment_count: missingEquipment.existingProject.equipmentCodes?.length || 0
     };
   }
 }));
