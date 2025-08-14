@@ -2,8 +2,12 @@ import { EQUIPMENT_PATTERNS, SUB_EQUIPMENT_PATTERNS, EQUIPMENT_CATEGORIES, COMMI
 import { stringHelpers, patternHelpers, arrayHelpers } from '../utils';
 
 /**
- * Enhanced Equipment Processor - DEBUG VERSION WITH COMPREHENSIVE LOGGING
- * CRITICAL FIX: Identify exactly where parent_equipment_number becomes self-referencing
+ * Enhanced Equipment Processor - WITH DEBUG CODE ADDED
+ * CONSISTENT FIELD NAMES:
+ * - parent_equipment_number (NOT parent_equipment_code)
+ * - commissioning_yn (NOT commissioning_status)
+ * FIXED: Proper handling of '-' symbol in parent_equipment_number
+ * FIXED: Build errors and runtime errors
  */
 
 // Helper function for safe string conversion
@@ -24,30 +28,16 @@ const cleanEquipmentCode = (value) => {
   return stringValue.trim().replace(/\s+/g, ' ');
 };
 
-// NEW: Separate function for cleaning parent equipment codes with ENHANCED DEBUGGING
+// NEW: Separate function for cleaning parent equipment codes
 const cleanParentEquipmentCode = (value) => {
-  const originalValue = value; // Store original for debugging
   const stringValue = safeToString(value);
-  
-  // 🔍 DEBUG: Log what this function receives and returns
-  console.log(`🔍 cleanParentEquipmentCode called with:`, {
-    original: originalValue,
-    stringValue: stringValue,
-    trimmed: stringValue.trim()
-  });
-  
   if (!stringValue || stringValue.trim() === '') {
-    console.log(`   → Returning NULL (empty/null input)`);
     return null; // No parent specified
   }
   if (stringValue.trim() === '-') {
-    console.log(`   → Returning NULL (dash means this IS a parent)`);
     return null; // '-' means this equipment IS a parent (no parent above it)
   }
-  
-  const cleaned = stringValue.trim().replace(/\s+/g, ' ');
-  console.log(`   → Returning cleaned: "${cleaned}"`);
-  return cleaned;
+  return stringValue.trim().replace(/\s+/g, ' ');
 };
 
 // CORRECTED: Basic equipment validation for Y-status items (accept ALL, never filter)
@@ -69,56 +59,73 @@ const isValidTBCItem = (equipmentCode) => {
   return cleaned !== '' && cleaned !== '-' && cleaned.toLowerCase() !== 'n/a';
 };
 
-// Enhanced pattern matching for electrical equipment
+// Enhanced pattern matching for electrical equipment - WITH DEBUG CODE
 const testPatternMatch = (equipmentNumber, pattern) => {
-  if (!equipmentNumber || !pattern) return false;
+  const safeEquipmentNumber = safeToString(equipmentNumber);
   
-  const cleanEquipmentNumber = cleanEquipmentCode(equipmentNumber);
-  if (!cleanEquipmentNumber) return false;
+  if (!safeEquipmentNumber) return false;
   
-  // CRITICAL FIX: Handle RegExp objects properly
+  const cleanEquipmentNumber = safeEquipmentNumber.toUpperCase().trim();
+  
   if (pattern instanceof RegExp) {
-    return pattern.test(cleanEquipmentNumber);
+    const result = pattern.test(cleanEquipmentNumber);
+    // DEBUG CODE ADDED:
+    console.log(`🔍 PATTERN TEST: "${cleanEquipmentNumber}" vs ${pattern} = ${result}`);
+    return result;
   }
   
-  // Handle string patterns as fallback
-  if (typeof pattern === 'string') {
-    try {
-      const regexPattern = new RegExp(pattern, 'i');
-      return regexPattern.test(cleanEquipmentNumber);
-    } catch (error) {
-      console.warn(`Invalid pattern: ${pattern}`, error);
-      return false;
-    }
+  const safePattern = safeToString(pattern);
+  if (!safePattern) return false;
+  
+  const cleanPattern = safePattern.toUpperCase().trim();
+  
+  if (cleanEquipmentNumber.startsWith(cleanPattern)) {
+    return true;
+  }
+  
+  if (cleanPattern.includes('X')) {
+    const regexPattern = cleanPattern.replace(/X+/g, '\\d+').replace(/\+/g, '\\+');
+    const regex = new RegExp(`^${regexPattern}`, 'i');
+    return regex.test(cleanEquipmentNumber);
   }
   
   return false;
 };
 
-// Enhanced equipment category determination
+// Determine equipment category for electrical equipment - WITH DEBUG CODE
 const determineEquipmentCategory = (equipmentNumber) => {
-  if (!equipmentNumber) return '99';
+  const safeEquipmentNumber = safeToString(equipmentNumber);
   
-  const cleanCode = cleanEquipmentCode(equipmentNumber);
-  if (!cleanCode) return '99';
+  if (!safeEquipmentNumber || safeEquipmentNumber.trim() === '') {
+    return '99';
+  }
+
+  const cleanedNumber = safeEquipmentNumber.toUpperCase().trim();
   
-  // Test against all equipment patterns in order
+  // DEBUG CODE ADDED:
+  console.log(`📋 CATEGORIZING: "${cleanedNumber}"`);
+  
+  // Test against electrical equipment patterns
   for (const [categoryId, patterns] of Object.entries(EQUIPMENT_PATTERNS)) {
-    const categoryPatterns = Array.isArray(patterns) ? patterns : [patterns];
-    
-    for (const pattern of categoryPatterns) {
-      if (testPatternMatch(cleanCode, pattern)) {
+    console.log(`  Testing category ${categoryId}:`, patterns.length, 'patterns');
+    for (const pattern of patterns) {
+      const patternString = pattern.pattern || pattern;
+      console.log(`    Pattern:`, patternString);
+      
+      if (testPatternMatch(cleanedNumber, patternString)) {
+        console.log(`✅ MATCH FOUND: "${cleanedNumber}" → Category ${categoryId}`);
         return categoryId;
       }
     }
   }
-  
-  return '99'; // Unrecognised Equipment
+
+  console.log(`❌ NO MATCH: "${cleanedNumber}" → Category 99`);
+  return '99'; // Unrecognized electrical equipment
 };
 
-// Enhanced parent-child relationship analysis with COMPREHENSIVE DEBUGGING
+// FIXED: Enhanced parent-child relationship analysis for electrical equipment
 const analyzeParentChildRelationships = (equipmentList) => {
-  console.log('[ANALYSIS] 🔍 ENHANCED ELECTRICAL EQUIPMENT PARENT-CHILD ANALYSIS WITH FULL DEBUG');
+  console.log('[ANALYSIS] ENHANCED ELECTRICAL EQUIPMENT PARENT-CHILD ANALYSIS');
   
   const relationships = [];
   const parentEquipment = new Set();
@@ -135,35 +142,16 @@ const analyzeParentChildRelationships = (equipmentList) => {
   
   console.log(`[MAP] Equipment map created: ${equipmentMap.size} equipment items`);
   
-  // 🔍 DEBUG: Log first 3 raw items before any processing
-  console.log(`🔍 RAW DATA SAMPLE (first 3 items):`);
-  equipmentList.slice(0, 3).forEach((item, index) => {
-    console.log(`   Raw Item ${index + 1}:`, {
-      equipment_number: item.equipment_number,
-      parent_equipment_number: item.parent_equipment_number,
-      description: item.description?.slice(0, 30) + '...'
-    });
-  });
-  
-  equipmentList.forEach((item, itemIndex) => {
+  equipmentList.forEach(item => {
     const equipmentCode = cleanEquipmentCode(item.equipment_number);
-    
-    // 🔍 CRITICAL DEBUG: Log the original parent data before cleaning
-    if (itemIndex < 10) { // Debug first 10 items
-      console.log(`🔍 ITEM ${itemIndex + 1} RAW DATA:`, {
-        equipment_number: item.equipment_number,
-        parent_equipment_number: item.parent_equipment_number
-      });
-    }
-    
-    const parentCode = cleanParentEquipmentCode(item.parent_equipment_number);
+    const parentCode = cleanParentEquipmentCode(item.parent_equipment_number); // FIXED: Use new parent cleaning function
     
     if (!equipmentCode) return;
     
     // Enhanced debugging for +UH and -F relationships
     const isUHPanel = equipmentCode.includes('UH');
     const isFDevice = equipmentCode.startsWith('-F');
-    const shouldLog = isUHPanel || isFDevice || itemIndex < 10; // Log first 10 + electrical items
+    const shouldLog = isUHPanel || isFDevice;
     
     if (shouldLog) {
       console.log(`   [ELECTRICAL] Analyzing: "${equipmentCode}" with parent: "${parentCode || 'NULL (is parent)'}"`);
@@ -232,18 +220,8 @@ const analyzeParentChildRelationships = (equipmentList) => {
 
 // Main equipment processing with CORRECTED validation strategy
 const processEquipmentList = (rawEquipmentList) => {
-  console.log('🔍 STARTING DEBUG VERSION - Y-STATUS EQUIPMENT PROCESSING');
+  console.log('CORRECTED Y-STATUS EQUIPMENT PROCESSING - ACCEPT ALL Y, LENIENT TBC');
   console.log(`Input: ${rawEquipmentList.length} raw equipment items`);
-
-  // 🔍 DEBUG: Log sample raw data BEFORE any processing
-  console.log(`🔍 RAW INPUT SAMPLE (first 3 items):`);
-  rawEquipmentList.slice(0, 3).forEach((item, index) => {
-    console.log(`   Raw ${index + 1}:`, {
-      equipment_number: item.equipment_number,
-      parent_equipment_number: item.parent_equipment_number,
-      commissioning_yn: item.commissioning_yn
-    });
-  });
 
   // Step 1: Separate by commissioning status - FIXED: Use commissioning_yn consistently
   const getCommissioningStatus = (item) => {
@@ -266,16 +244,6 @@ const processEquipmentList = (rawEquipmentList) => {
 
   console.log(`Status separation: ${yStatusItems.length} Y-status, ${tbcStatusItems.length} TBC-status`);
 
-  // 🔍 DEBUG: Log sample Y-status data AFTER filtering
-  console.log(`🔍 Y-STATUS SAMPLE (first 3 items):`);
-  yStatusItems.slice(0, 3).forEach((item, index) => {
-    console.log(`   Y-Status ${index + 1}:`, {
-      equipment_number: item.equipment_number,
-      parent_equipment_number: item.parent_equipment_number,
-      commissioning_yn: item.commissioning_yn
-    });
-  });
-
   // Step 2: ACCEPT ALL valid Y-status equipment (fixed approach)
   const allValidYEquipment = yStatusItems.filter(item => {
     const equipmentCode = cleanEquipmentCode(item.equipment_number);
@@ -291,106 +259,70 @@ const processEquipmentList = (rawEquipmentList) => {
 
   console.log(`Equipment validation: ${allValidYEquipment.length}/${yStatusItems.length} Y-status accepted, ${tbcStatusItems.length}/${tbcStatusItems.length} TBC accepted`);
 
-  // 🔍 DEBUG: Log sample validated data AFTER validation
-  console.log(`🔍 VALIDATED SAMPLE (first 3 items):`);
-  allValidYEquipment.slice(0, 3).forEach((item, index) => {
-    console.log(`   Validated ${index + 1}:`, {
-      equipment_number: item.equipment_number,
-      parent_equipment_number: item.parent_equipment_number,
-      commissioning_yn: item.commissioning_yn
-    });
-  });
-
   // Step 3: Enhanced parent-child relationship analysis
   const relationshipAnalysis = analyzeParentChildRelationships(allValidYEquipment);
 
-  // Step 4: Categorize Y-status equipment with ENHANCED DEBUGGING
-  console.log(`🔍 STEP 4: Starting categorization of ${allValidYEquipment.length} items...`);
-  
-  const categorizedEquipment = allValidYEquipment.map((item, itemIndex) => {
+  // Step 4: Categorize Y-status equipment
+  const categorizedEquipment = allValidYEquipment.map(item => {
     const category = determineEquipmentCategory(item.equipment_number);
     const categoryName = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
     
     // FIXED: Check if this is sub-equipment based on parent relationship
     const equipmentCode = cleanEquipmentCode(item.equipment_number);
+    const parentCode = cleanParentEquipmentCode(item.parent_equipment_number);
     const isSubEquipment = relationshipAnalysis.childEquipment.has(equipmentCode);
-    
-    // 🔍 CRITICAL DEBUG: Log transformation for first 5 items
-    if (itemIndex < 5) {
-      console.log(`🔍 CATEGORIZATION DEBUG - Item ${itemIndex + 1}:`);
-      console.log(`   Input equipment_number: "${item.equipment_number}"`);
-      console.log(`   Input parent_equipment_number: "${item.parent_equipment_number}"`);
-      console.log(`   Calling cleanParentEquipmentCode("${item.parent_equipment_number}")...`);
-    }
-    
-    const cleanedParentCode = cleanParentEquipmentCode(item.parent_equipment_number);
-    
-    if (itemIndex < 5) {
-      console.log(`   Result from cleanParentEquipmentCode: "${cleanedParentCode}"`);
-    }
-    
-    const processedItem = {
-      ...item,
-      category,
+    const isParentEquipment = relationshipAnalysis.parentEquipment.has(equipmentCode);
+
+    return {
+      equipment_number: equipmentCode,
+      description: safeToString(item.description || '').trim(),
+      category: category,
       category_name: categoryName,
+      commissioning_yn: getCommissioningStatus(item), // FIXED: Use consistent field name
       is_sub_equipment: isSubEquipment,
-      parent_equipment_number: cleanedParentCode, // This should NOT be self-referencing
-      commissioning_yn: item.commissioning_yn
+      is_parent_equipment: isParentEquipment,
+      parent_equipment_number: parentCode, // FIXED: Use consistent field name
+      subsystem: safeToString(item.subsystem || '').trim()
     };
-    
-    // 🔍 FINAL DEBUG: Log the output
-    if (itemIndex < 5) {
-      console.log(`   Final processed item:`, {
-        equipment_number: processedItem.equipment_number,
-        parent_equipment_number: processedItem.parent_equipment_number,
-        is_sub_equipment: processedItem.is_sub_equipment
-      });
-      console.log(`   ───────────────────────────────────────`);
-    }
-    
-    return processedItem;
   });
 
-  // 🔍 VERIFICATION: Check if self-referencing still exists
-  const selfReferencingItems = categorizedEquipment.filter(item => 
-    item.equipment_number === item.parent_equipment_number
-  );
-  
-  console.log(`🔍 SELF-REFERENCING CHECK: Found ${selfReferencingItems.length} self-referencing items`);
-  if (selfReferencingItems.length > 0) {
-    console.log(`   Examples:`, selfReferencingItems.slice(0, 3).map(item => ({
-      equipment: item.equipment_number,
-      parent: item.parent_equipment_number
-    })));
-  }
-
-  // Step 5: Process TBC equipment with lenient validation
+  // Step 5: Process TBC equipment separately - LENIENT acceptance for TBC
   const processedTBCEquipment = tbcStatusItems
     .filter(item => {
       const equipmentCode = cleanEquipmentCode(item.equipment_number);
       return isValidTBCItem(equipmentCode);
     })
-    .map((item, index) => ({
-      ...item,
-      tbc_code: `TBC${String(index + 1).padStart(3, '0')}`,
-      category: '99',
-      category_name: 'TBC - Equipment To Be Confirmed',
-      is_sub_equipment: false,
-      parent_equipment_number: cleanParentEquipmentCode(item.parent_equipment_number),
-      commissioning_yn: item.commissioning_yn
-    }));
+    .map((item, index) => {
+      const equipmentCode = cleanEquipmentCode(item.equipment_number);
+      const tbcSequence = String(index + 1).padStart(3, '0');
+      
+      return {
+        equipment_number: equipmentCode,
+        tbc_code: `TBC${tbcSequence}`,
+        description: safeToString(item.description || '').trim(),
+        category: 'TBC',
+        category_name: 'Equipment To Be Confirmed',
+        commissioning_yn: 'TBC',
+        is_sub_equipment: false,
+        is_parent_equipment: false,
+        parent_equipment_number: null,
+        subsystem: safeToString(item.subsystem || '').trim()
+      };
+    });
 
-  // Step 6: Extract dynamic subsystem mapping from processed equipment
+  console.log(`TBC equipment processed: ${processedTBCEquipment.length} items`);
+
+  // Step 6: Extract dynamic subsystem mapping from equipment
   const subsystemMapping = {};
-  let subsystemIndex = 1;
+  const uniqueSubsystems = [...new Set(allValidYEquipment.map(item => 
+    safeToString(item.subsystem || '').trim()
+  ).filter(subsystem => subsystem && subsystem !== ''))];
 
-  allValidYEquipment.forEach(item => {
-    const subsystem = item.subsystem;
-    if (subsystem && !subsystemMapping[subsystem]) {
+  let subsystemIndex = 1;
+  uniqueSubsystems.forEach(subsystem => {
+    if (subsystem && subsystem.trim()) {
       subsystemMapping[subsystem] = {
-        code: `S${subsystemIndex}`,
-        name: subsystem,
-        z_code: `Z${String(subsystemIndex).padStart(2, '0')}`,
+        code: `Z${String(subsystemIndex).padStart(2, '0')}`,
         full_name: `S${subsystemIndex} | Z${String(subsystemIndex).padStart(2, '0')} | ${subsystem}`
       };
       subsystemIndex++;
@@ -466,7 +398,7 @@ const processEquipmentList = (rawEquipmentList) => {
 // Main equipment categorization function - ENHANCED WITH FIXED COMMISSIONING FILTERING
 export const categorizeEquipment = (equipmentList) => {
   try {
-    console.log('🔍 STARTING DEBUG VERSION - EQUIPMENT CATEGORIZATION');
+    console.log('STARTING CORRECTED EQUIPMENT CATEGORIZATION - ACCEPT ALL Y, LENIENT TBC');
     console.log(`Input: ${equipmentList?.length || 0} raw equipment items`);
 
     if (!Array.isArray(equipmentList) || equipmentList.length === 0) {
@@ -475,7 +407,7 @@ export const categorizeEquipment = (equipmentList) => {
 
     const processedData = processEquipmentList(equipmentList);
     
-    console.log('🔍 CORRECTED equipment categorization completed:', {
+    console.log('CORRECTED equipment categorization completed:', {
       originalItems: processedData.original,
       yStatusItems: processedData.yStatusOriginal,
       acceptedYItems: processedData.acceptedYItems,
@@ -533,7 +465,7 @@ export const categorizeEquipment = (equipmentList) => {
 // Additional utility functions
 export const filterEquipmentForWBS = (equipment) => {
   return equipment.filter(item => {
-    const status = safeToString(item.commissioning_yn || '').toUpperCase();
+    const status = safeToString(item.commissioning_yn || '').toUpperCase(); // FIXED: Use commissioning_yn consistently
     return status === 'Y' || status === 'TBC';
   });
 };
@@ -575,10 +507,10 @@ export const exportCategorizedEquipment = (equipment) => {
     description: item.description,
     category: item.category,
     category_name: item.category_name,
-    commissioning_yn: item.commissioning_yn,
+    commissioning_yn: item.commissioning_yn, // FIXED: Use commissioning_yn consistently
     is_sub_equipment: item.is_sub_equipment,
     is_parent_equipment: item.is_parent_equipment,
-    parent_equipment_number: item.parent_equipment_number || '',
+    parent_equipment_number: item.parent_equipment_number || '', // FIXED: Use parent_equipment_number consistently
     subsystem: item.subsystem
   }));
 };
