@@ -333,7 +333,7 @@ const processEquipmentList = (rawEquipmentList) => {
 
   console.log(`TBC equipment processed: ${processedTBCEquipment.length} items`);
 
-  // Step 6: Extract dynamic subsystem mapping from equipment
+  // Step 6: Extract dynamic subsystem mapping from equipment with proper parsing
   const subsystemMapping = {};
   const uniqueSubsystems = [...new Set(allValidYEquipment.map(item => 
     safeToString(item.subsystem || '').trim()
@@ -342,9 +342,25 @@ const processEquipmentList = (rawEquipmentList) => {
   let subsystemIndex = 1;
   uniqueSubsystems.forEach(subsystem => {
     if (subsystem && subsystem.trim()) {
+      // Parse subsystem format: "33kV Switchroom 1 - +Z01"
+      const subsystemParts = subsystem.split(' - ');
+      let subsystemCode, subsystemName;
+      
+      if (subsystemParts.length === 2) {
+        // Format: "33kV Switchroom 1 - +Z01"
+        subsystemName = subsystemParts[0].trim(); // "33kV Switchroom 1"
+        subsystemCode = subsystemParts[1].trim(); // "+Z01"
+      } else {
+        // Fallback for non-standard format
+        subsystemName = subsystem;
+        subsystemCode = `Z${String(subsystemIndex).padStart(2, '0')}`;
+      }
+      
       subsystemMapping[subsystem] = {
-        code: `Z${String(subsystemIndex).padStart(2, '0')}`,
-        full_name: `S${subsystemIndex} | Z${String(subsystemIndex).padStart(2, '0')} | ${subsystem}`
+        code: subsystemCode,
+        name: subsystemName,
+        full_name: `S${subsystemIndex} | ${subsystemCode} | ${subsystemName}`,
+        index: subsystemIndex
       };
       subsystemIndex++;
     }
