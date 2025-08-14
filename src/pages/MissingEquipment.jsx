@@ -5,7 +5,7 @@ import WBSVisualization from '../components/WBSVisualization';
 import ExportButton from '../components/ExportButton';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { parseFile } from '../lib/fileParser';
-import { processEquipment } from '../lib/equipmentProcessor';
+import { categorizeEquipment } from '../lib/equipmentProcessor';
 import { generateWBSStructure } from '../lib/wbsGenerator';
 import { extractEquipmentCodesFromWBS } from '../lib/xerParser';
 
@@ -128,7 +128,7 @@ const MissingEquipment = () => {
       console.log('MISSING EQUIPMENT: Starting equipment processing and WBS assignment');
 
       // Process equipment using existing logic
-      const processedEquipment = await processEquipment(equipmentList);
+      const processedEquipment = await categorizeEquipment(equipmentList);
       console.log('MISSING EQUIPMENT: Equipment processing completed', {
         totalProcessed: processedEquipment.totalProcessed
       });
