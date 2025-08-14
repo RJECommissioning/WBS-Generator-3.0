@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useProjectStore } from '../store/projectStore';
+import useProjectStore from '../store/projectStore';
 import FileUpload from '../components/FileUpload';
 import WBSVisualization from '../components/WBSVisualization';
 import ExportButton from '../components/ExportButton';
