@@ -457,7 +457,7 @@ const MissingEquipment = () => {
               
               <FileUpload
                 onFileUpload={handleXERFileUpload}
-                acceptedTypes=".xer,.txt"
+                accept=".xer,.txt
                 maxSizeMB={50}
                 title="Upload XER File"
                 description="Select XER text file exported from Primavera P6 (both .xer and .txt formats accepted)"
