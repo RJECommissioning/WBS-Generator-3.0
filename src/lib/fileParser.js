@@ -1,6 +1,7 @@
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { stringHelpers, validationHelpers } from '../utils';
+import { parseXERFile } from './xerParser.js';
 
 /**
  * Complete File Parser - NO DUPLICATES, CLEAN BUILD
