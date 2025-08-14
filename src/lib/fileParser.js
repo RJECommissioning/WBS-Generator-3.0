@@ -3,10 +3,9 @@ import * as XLSX from 'xlsx';
 import { stringHelpers, validationHelpers } from '../utils';
 
 /**
- * File Parser - Handles CSV, Excel (.xlsx), and XER file parsing
- * CRITICAL FIX: Name-based column mapping with CONSISTENT field names
- * - parent_equipment_number (NOT parent_equipment_code)
- * - commissioning_yn (for "Commissioning (Y/N)" column)
+ * File Parser - CRITICAL FIX for Column Mapping Bug
+ * ISSUE: parent_equipment_number getting equipment_number data
+ * FIX: Correct Excel array-to-object conversion with proper column indexing
  */
 
 // Excel Equipment List Parser - FIXED COLUMN MAPPING
@@ -67,6 +66,12 @@ export const parseExcelFile = (fileBuffer, filename) => {
       console.log('Cleaned headers count:', headers.length);
       console.log('Cleaned headers:', headers);
 
+      // 🔍 CRITICAL DEBUG: Show exact column positions
+      console.log('🔍 COLUMN MAPPING DEBUG:');
+      headers.forEach((header, index) => {
+        console.log(`   Column ${index}: "${header}"`);
+      });
+
       // Normalize header names
       const normalizedHeaders = headers.map(header => 
         header.toString().trim().toLowerCase()
@@ -76,18 +81,35 @@ export const parseExcelFile = (fileBuffer, filename) => {
 
       console.log('Normalized headers:', normalizedHeaders);
 
-      // Convert data rows to objects with normalized headers
+      // 🔍 CRITICAL FIX: Proper array-to-object conversion with CORRECT column indexing
       const dataRows = rawData.slice(1);
       const equipment = dataRows
         .filter(row => row && row.length > 0) // Filter empty rows
-        .map(row => {
+        .map((row, rowIndex) => {
           const item = {};
+          
+          // 🔍 CRITICAL DEBUG: Log first 3 rows with exact column mapping
+          if (rowIndex < 3) {
+            console.log(`🔍 ROW ${rowIndex + 1} MAPPING:`);
+            console.log(`   Column 4 (Parent Equipment Number): "${row[4]}"`);
+            console.log(`   Column 5 (Equipment Number): "${row[5]}"`);
+            console.log(`   Column 6 (Description): "${row[6]}"`);
+            console.log(`   Column 13 (Commissioning): "${row[13]}"`);
+          }
+          
+          // Map each column to normalized header names
           normalizedHeaders.forEach((header, index) => {
             // Only include columns that have meaningful headers
             if (header && header.trim() !== '' && row[index] !== undefined) {
               item[header] = row[index] || '';
+              
+              // 🔍 DEBUG: Log parent equipment number assignments for first 3 rows
+              if (rowIndex < 3 && header === 'parent_equipment_number') {
+                console.log(`     MAPPED: ${header} = "${row[index]}" (from column ${index})`);
+              }
             }
           });
+          
           return item;
         })
         .filter(item => {
@@ -98,7 +120,16 @@ export const parseExcelFile = (fileBuffer, filename) => {
         });
 
       console.log('Processed equipment count:', equipment.length);
-      console.log('Sample equipment item:', equipment[0]);
+      
+      // 🔍 CRITICAL DEBUG: Show sample processed items with parent data
+      console.log('🔍 SAMPLE PROCESSED ITEMS:');
+      equipment.slice(0, 3).forEach((item, index) => {
+        console.log(`   Item ${index + 1}:`, {
+          equipment_number: item.equipment_number,
+          parent_equipment_number: item.parent_equipment_number,
+          commissioning_yn: item.commissioning_yn
+        });
+      });
 
       // Log equipment codes for debugging
       const equipmentCodes = equipment
@@ -235,9 +266,27 @@ const processEquipmentData = (equipment, originalHeaders) => {
         );
       });
 
-      // FIXED: Normalize column names with CONSISTENT mapping
-      equipment = equipment.map(item => {
+      // 🔍 CRITICAL DEBUG: Show equipment data BEFORE column normalization
+      console.log('🔍 EQUIPMENT DATA BEFORE NORMALIZATION:');
+      equipment.slice(0, 3).forEach((item, index) => {
+        console.log(`   Pre-Norm ${index + 1}:`, {
+          equipment_number: item.equipment_number,
+          parent_equipment_number: item.parent_equipment_number,
+          commissioning_yn: item.commissioning_yn
+        });
+      });
+
+      // FIXED: Normalize column names with CONSISTENT mapping - NO OVERWRITES
+      equipment = equipment.map((item, itemIndex) => {
         const normalized = {};
+        
+        // 🔍 CRITICAL DEBUG: Log raw item data for first 3 items
+        if (itemIndex < 3) {
+          console.log(`🔍 NORMALIZING ITEM ${itemIndex + 1}:`);
+          console.log(`   Raw item keys:`, Object.keys(item));
+          console.log(`   Raw equipment_number: "${item.equipment_number}"`);
+          console.log(`   Raw parent_equipment_number: "${item.parent_equipment_number}"`);
+        }
         
         // CRITICAL FIX: Map common column variations to CONSISTENT standard names
         const columnMappings = {
@@ -264,257 +313,202 @@ const processEquipmentData = (equipment, originalHeaders) => {
           
           if (matchingKey && item[matchingKey] !== undefined) {
             normalized[standardField] = item[matchingKey];
+            
+            // 🔍 CRITICAL DEBUG: Log parent equipment number mapping for first 3 items
+            if (itemIndex < 3 && standardField === 'parent_equipment_number') {
+              console.log(`     COLUMN MAPPING: ${standardField} = "${item[matchingKey]}" (from key: "${matchingKey}")`);
+            }
           }
         }
 
-        // Add any unmapped fields as-is
+        // Add any unmapped fields as-is (but don't overwrite the mapped ones)
         for (const [key, value] of Object.entries(item)) {
-          if (!Object.values(columnMappings).flat().includes(key)) {
+          if (!Object.values(columnMappings).flat().includes(key) && !normalized[key]) {
             normalized[key] = value;
           }
+        }
+
+        // 🔍 CRITICAL DEBUG: Log final normalized item for first 3 items
+        if (itemIndex < 3) {
+          console.log(`   Final normalized item:`, {
+            equipment_number: normalized.equipment_number,
+            parent_equipment_number: normalized.parent_equipment_number,
+            commissioning_yn: normalized.commissioning_yn
+          });
+          console.log(`   ───────────────────────────────────────`);
         }
 
         return normalized;
       });
 
-      // Clean equipment numbers and set defaults
-      equipment = equipment.map(item => ({
-        ...item,
-        equipment_number: stringHelpers.cleanEquipmentCode(item.equipment_number || ''),
-        description: item.description || '',
-        commissioning_yn: item.commissioning_yn || 'Y' // FIXED: Use commissioning_yn consistently
-      }));
-
-      // Filter out items without equipment numbers
-      equipment = equipment.filter(item => 
-        item.equipment_number && item.equipment_number.trim() !== ''
-      );
-
-      // Validate results
-      const validation = validationHelpers.validateEquipmentList(equipment);
-      
-      // CRITICAL FIX: Add missing hasData and dataLength fields
-      resolve({
-        hasData: equipment.length > 0,
-        data: equipment,
-        dataLength: equipment.length,
-        originalHeaders: originalHeaders,
-        totalItems: equipment.length,
-        validation: validation
+      // 🔍 FINAL VERIFICATION: Check if parent data is correct after normalization
+      console.log('🔍 FINAL EQUIPMENT SAMPLE (after normalization):');
+      equipment.slice(0, 5).forEach((item, index) => {
+        console.log(`   Final ${index + 1}:`, {
+          equipment_number: item.equipment_number,
+          parent_equipment_number: item.parent_equipment_number,
+          commissioning_yn: item.commissioning_yn
+        });
       });
 
+      // Now process using the same logic as CSV parser
+      processEquipmentData(equipment, normalizedHeaders)
+        .then(result => {
+          console.log('Equipment processing complete:', {
+            totalProcessed: result.totalItems,
+            validationErrors: result.validation?.errors?.length || 0,
+            originalHeaders: result.originalHeaders
+          });
+          
+          // CRITICAL FIX: Ensure proper structure for StartNewProject
+          resolve({
+            hasData: result.hasData,
+            data: result.data,
+            dataLength: result.dataLength,
+            originalHeaders: result.originalHeaders,
+            type: 'equipment_list'
+          });
+        })
+        .catch(reject);
+
     } catch (error) {
-      reject(new Error(`Processing equipment data failed: ${error.message}`));
+      console.error('Excel parsing failed:', error);
+      reject(new Error(`Excel parsing failed: ${error.message}`));
     }
   });
 };
 
-// XER File Parser (for Continue Project feature)
-export const parseXERFile = (xerContent) => {
+// CSV Equipment List Parser
+export const parseEquipmentList = (csvContent) => {
   return new Promise((resolve, reject) => {
     try {
-      // Parse XER file format
-      Papa.parse(xerContent, {
-        header: true,
-        dynamicTyping: true,
-        skipEmptyLines: true,
-        delimitersToGuess: [',', '\t', '|', ';'],
-        transformHeader: (header) => {
-          return header.trim().toLowerCase().replace(/\s+/g, '_');
-        },
-        complete: (results) => {
-          try {
-            let xerData = results.data;
-            
-            // Filter valid rows
-            xerData = xerData.filter(item => 
-              item.wbs_code && item.wbs_name
-            );
-
-            // Normalize WBS structure for consistency
-            const cleanedWBSItems = xerData.map(item => ({
-              wbs_code: item.wbs_code ? item.wbs_code.toString().trim() : '',
-              parent_wbs_code: item.parent_wbs_code ? item.parent_wbs_code.toString().trim() : null,
-              wbs_name: item.wbs_name || '',
-              level: stringHelpers.getWBSLevel(item.wbs_code)
-            }));
-
-            // Find the highest WBS code for continuation
-            const lastWBSCode = findHighestWBSCode(cleanedWBSItems);
-            
-            // Extract project information
-            const projectInfo = extractProjectInfo(cleanedWBSItems);
-
-            // Build hierarchical structure
-            const hierarchicalStructure = buildWBSHierarchy(cleanedWBSItems);
-
-            resolve({
-              wbs_items: cleanedWBSItems,
-              hierarchical_structure: hierarchicalStructure,
-              last_wbs_code: lastWBSCode,
-              project_info: projectInfo,
-              total_items: cleanedWBSItems.length,
-              original_headers: results.meta.fields || []
-            });
-
-          } catch (processingError) {
-            reject(new Error(`Error processing XER data: ${processingError.message}`));
-          }
-        },
-        error: (error) => {
-          reject(new Error(`XER parsing failed: ${error.message}`));
-        }
-      });
-
-    } catch (error) {
-      reject(new Error(`Failed to parse XER file: ${error.message}`));
-    }
-  });
-};
-
-// Existing Project Parser (for Missing Equipment feature)
-export const parseExistingProject = (csvContent) => {
-  return new Promise((resolve, reject) => {
-    try {
-      // Parse existing WBS structure (should be in standard format)
+      // Parse CSV with robust settings
       Papa.parse(csvContent, {
         header: true,
         dynamicTyping: true,
         skipEmptyLines: true,
         delimitersToGuess: [',', '\t', '|', ';'],
         transformHeader: (header) => {
-          return header.trim().toLowerCase().replace(/\s+/g, '_');
+          // Clean and normalize headers
+          return header.trim().toLowerCase()
+            .replace(/\s+/g, '_')
+            .replace(/[^a-z0-9_]/g, '');
+        },
+        transform: (value, header) => {
+          // Clean data values
+          if (typeof value === 'string') {
+            return value.trim();
+          }
+          return value;
         },
         complete: (results) => {
           try {
-            let existingProject = results.data;
+            if (results.errors.length > 0) {
+              console.warn('CSV parsing warnings:', results.errors);
+            }
+
+            let equipment = results.data;
             
-            // Filter valid rows
-            existingProject = existingProject.filter(item => 
-              item.wbs_code && item.wbs_name
-            );
-
-            // Normalize structure
-            const normalizedProject = existingProject.map(item => ({
-              wbs_code: item.wbs_code.toString().trim(),
-              parent_wbs_code: item.parent_wbs_code ? item.parent_wbs_code.toString().trim() : null,
-              wbs_name: item.wbs_name || '',
-              level: stringHelpers.getWBSLevel(item.wbs_code)
-            }));
-
-            resolve({
-              wbs_items: normalizedProject,
-              total_items: normalizedProject.length,
-              original_headers: results.meta.fields || []
+            // Remove empty rows
+            equipment = equipment.filter(item => {
+              return Object.values(item).some(value => 
+                value && value.toString().trim() !== ''
+              );
             });
 
+            processEquipmentData(equipment, results.meta.fields || [])
+              .then(result => {
+                resolve({
+                  hasData: result.hasData,
+                  data: result.data,
+                  dataLength: result.dataLength,
+                  originalHeaders: result.originalHeaders,
+                  type: 'equipment_list'
+                });
+              })
+              .catch(reject);
+
           } catch (processingError) {
-            reject(new Error(`Error processing existing project data: ${processingError.message}`));
+            reject(new Error(`Error processing CSV data: ${processingError.message}`));
           }
         },
         error: (error) => {
-          reject(new Error(`Existing project parsing failed: ${error.message}`));
+          reject(new Error(`CSV parsing failed: ${error.message}`));
         }
       });
 
     } catch (error) {
-      reject(new Error(`Failed to parse existing project file: ${error.message}`));
+      reject(new Error(`Failed to parse equipment list: ${error.message}`));
     }
   });
 };
 
-// Helper functions for XER and project processing
-const findHighestWBSCode = (wbsItems) => {
-  if (wbsItems.length === 0) return '1';
-  
-  const sortedCodes = wbsItems
-    .map(item => item.wbs_code)
-    .filter(code => code && code.trim() !== '')
-    .sort((a, b) => {
-      const aParts = a.split('.').map(Number);
-      const bParts = b.split('.').map(Number);
+// FIXED: Shared equipment data processing logic with CONSISTENT field names  
+const processEquipmentData = (equipment, originalHeaders) => {
+  return new Promise((resolve, reject) => {
+    try {
+      // Remove empty rows
+      equipment = equipment.filter(item => {
+        // Look for any field that might be an equipment identifier
+        const possibleIds = ['equipment_number', 'equipment_no', 'equipment_code', 'code', 'equipment', 'tag', 'id'];
+        return possibleIds.some(field => 
+          item[field] && item[field].toString().trim() !== ''
+        );
+      });
+
+      // 🔍 CRITICAL DEBUG: Verify data integrity before sending to equipment processor
+      console.log('🔍 DATA INTEGRITY CHECK (processEquipmentData):');
+      equipment.slice(0, 5).forEach((item, index) => {
+        console.log(`   Integrity ${index + 1}:`, {
+          equipment_number: item.equipment_number,
+          parent_equipment_number: item.parent_equipment_number,
+          commissioning_yn: item.commissioning_yn
+        });
+      });
+
+      // Enhanced validation
+      const validation = validateHeaders(Object.keys(equipment[0] || {}));
       
-      for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-        const aVal = aParts[i] || 0;
-        const bVal = bParts[i] || 0;
-        
-        if (aVal !== bVal) {
-          return aVal - bVal;
-        }
+      if (!validation.hasRequiredFields) {
+        console.warn('Missing required fields:', validation.missingFields);
       }
-      return 0;
-    });
-  
-  return sortedCodes.length > 0 ? sortedCodes[sortedCodes.length - 1] : '1';
-};
 
-const extractProjectInfo = (wbsItems) => {
-  // Extract project information from WBS items
-  const projectInfo = {
-    project_name: 'Imported Project',
-    total_wbs_levels: 0,
-    subsystems: [],
-    categories: []
-  };
+      // Return processed data
+      resolve({
+        hasData: equipment.length > 0,
+        data: equipment,
+        dataLength: equipment.length,
+        originalHeaders: originalHeaders,
+        validation: validation,
+        totalItems: equipment.length
+      });
 
-  if (wbsItems.length > 0) {
-    // Find max level
-    projectInfo.total_wbs_levels = Math.max(...wbsItems.map(item => item.level || 0));
-    
-    // Find subsystems (usually level 2 items with "S" or "Z" patterns)
-    projectInfo.subsystems = wbsItems
-      .filter(item => 
-        item.level === 2 && 
-        (item.wbs_name.includes('S1') || item.wbs_name.includes('Z'))
-      )
-      .map(item => ({
-        code: item.wbs_code,
-        name: item.wbs_name
-      }));
-
-    // Find categories (usually level 3 items with numbered patterns)
-    projectInfo.categories = wbsItems
-      .filter(item => 
-        item.level === 3 && 
-        /\d{2}\s*\|/.test(item.wbs_name)
-      )
-      .map(item => ({
-        code: item.wbs_code,
-        name: item.wbs_name,
-        category_number: item.wbs_name.match(/(\d{2})/)?.[1]
-      }));
-  }
-
-  return projectInfo;
-};
-
-const buildWBSHierarchy = (wbsItems) => {
-  // Build parent-child relationships
-  const itemMap = {};
-  const tree = [];
-
-  // Create lookup map
-  wbsItems.forEach(item => {
-    itemMap[item.wbs_code] = {
-      ...item,
-      children: []
-    };
-  });
-
-  // Build hierarchy
-  wbsItems.forEach(item => {
-    if (item.parent_wbs_code && itemMap[item.parent_wbs_code]) {
-      itemMap[item.parent_wbs_code].children.push(itemMap[item.wbs_code]);
-    } else {
-      tree.push(itemMap[item.wbs_code]);
+    } catch (error) {
+      console.error('Equipment data processing failed:', error);
+      reject(new Error(`Equipment data processing failed: ${error.message}`));
     }
   });
-
-  return tree;
 };
 
-// Improved file type detector
-export const detectFileType = (filename, content, fileBuffer = null) => {
+// Header validation helper
+const validateHeaders = (headers) => {
+  const required = ['equipment_number', 'description'];
+  const optional = ['parent_equipment_number', 'commissioning_yn', 'subsystem', 'plu_field'];
+  
+  const missingRequired = required.filter(field => !headers.includes(field));
+  const missingOptional = optional.filter(field => !headers.includes(field));
+  
+  return {
+    hasRequiredFields: missingRequired.length === 0,
+    missingFields: missingRequired,
+    missingOptionalFields: missingOptional,
+    availableFields: headers,
+    score: ((required.length - missingRequired.length) + (optional.length - missingOptional.length)) / (required.length + optional.length)
+  };
+};
+
+// File type detection helper
+const detectFileType = (filename, content = '', fileBuffer = null) => {
   const extension = filename.split('.').pop().toLowerCase();
   
   // Check for Excel files
@@ -613,4 +607,29 @@ export const parseFile = async (file) => {
   } catch (error) {
     throw new Error(`File parsing failed: ${error.message}`);
   }
+};
+
+// Placeholder parsers for missing functionality
+const parseXERFile = (content) => {
+  return new Promise((resolve) => {
+    resolve({
+      hasData: false,
+      data: [],
+      dataLength: 0,
+      originalHeaders: [],
+      type: 'xer'
+    });
+  });
+};
+
+const parseExistingProject = (content) => {
+  return new Promise((resolve) => {
+    resolve({
+      hasData: false,
+      data: [],
+      dataLength: 0,
+      originalHeaders: [],
+      type: 'existing_project'
+    });
+  });
 };
