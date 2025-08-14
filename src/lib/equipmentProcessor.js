@@ -8,6 +8,7 @@ import { stringHelpers, patternHelpers, arrayHelpers } from '../utils';
  * - commissioning_yn (NOT commissioning_status)
  * FIXED: Proper handling of '-' symbol in parent_equipment_number
  * FIXED: Build errors and runtime errors
+ * FIXED: Child equipment inherits parent's category instead of pattern matching
  */
 
 // Helper function for safe string conversion
@@ -262,16 +263,36 @@ const processEquipmentList = (rawEquipmentList) => {
   // Step 3: Enhanced parent-child relationship analysis
   const relationshipAnalysis = analyzeParentChildRelationships(allValidYEquipment);
 
-  // Step 4: Categorize Y-status equipment
+  // Step 4: Categorize Y-status equipment - FIXED: Child equipment inherits parent's category
   const categorizedEquipment = allValidYEquipment.map(item => {
-    const category = determineEquipmentCategory(item.equipment_number);
-    const categoryName = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
-    
-    // FIXED: Check if this is sub-equipment based on parent relationship
     const equipmentCode = cleanEquipmentCode(item.equipment_number);
     const parentCode = cleanParentEquipmentCode(item.parent_equipment_number);
     const isSubEquipment = relationshipAnalysis.childEquipment.has(equipmentCode);
     const isParentEquipment = relationshipAnalysis.parentEquipment.has(equipmentCode);
+
+    // FIXED: Child equipment inherits parent's category instead of pattern matching
+    let category, categoryName;
+    
+    if (isSubEquipment && parentCode) {
+      // CHILD EQUIPMENT: Find parent and inherit its category
+      const parentItem = allValidYEquipment.find(p => 
+        cleanEquipmentCode(p.equipment_number) === parentCode
+      );
+      if (parentItem) {
+        category = determineEquipmentCategory(parentItem.equipment_number); // Use parent's pattern
+        categoryName = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
+        console.log(`👶 CHILD INHERITS: "${equipmentCode}" inherits category ${category} from parent "${parentCode}"`);
+      } else {
+        // Orphaned child - parent not found
+        category = '99';
+        categoryName = 'Unrecognised Equipment';
+        console.log(`🚨 ORPHANED CHILD: "${equipmentCode}" parent "${parentCode}" not found → Category 99`);
+      }
+    } else {
+      // PARENT EQUIPMENT: Normal pattern matching
+      category = determineEquipmentCategory(item.equipment_number);
+      categoryName = EQUIPMENT_CATEGORIES[category] || 'Unrecognised Equipment';
+    }
 
     return {
       equipment_number: equipmentCode,
