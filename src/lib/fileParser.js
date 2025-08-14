@@ -253,16 +253,18 @@ const parseExcelFile = (fileBuffer, filename) => {
         throw new Error('No valid equipment data found in Excel file');
       }
       
-      // Process the equipment data
-      const result = await processData(equipment, headers);
-      
-      resolve({
-        hasData: result.hasData,
-        data: result.data,
-        dataLength: result.dataLength,
-        originalHeaders: result.originalHeaders,
-        type: 'equipment_list'
-      });
+         // Process the equipment data
+    processData(equipment, headers)
+      .then(result => {
+        resolve({
+          hasData: result.hasData,
+          data: result.data,
+          dataLength: result.dataLength,
+          originalHeaders: result.originalHeaders,
+          type: 'equipment_list'
+        });
+      })
+  .catch(reject);
 
     } catch (error) {
       console.error('Excel parsing failed:', error);
