@@ -333,40 +333,50 @@ const processEquipmentList = (rawEquipmentList) => {
 
   console.log(`TBC equipment processed: ${processedTBCEquipment.length} items`);
 
-  // Step 6: Extract dynamic subsystem mapping from equipment with proper parsing
+  // Step 6: Extract dynamic subsystem mapping from equipment with proper parsing and sorting
   const subsystemMapping = {};
   const uniqueSubsystems = [...new Set(allValidYEquipment.map(item => 
     safeToString(item.subsystem || '').trim()
   ).filter(subsystem => subsystem && subsystem !== ''))];
 
-  let subsystemIndex = 1;
-  uniqueSubsystems.forEach(subsystem => {
-    if (subsystem && subsystem.trim()) {
-      // Parse subsystem format: "33kV Switchroom 1 - +Z01"
-      const subsystemParts = subsystem.split(' - ');
-      let subsystemCode, subsystemName;
-      
-      if (subsystemParts.length === 2) {
-        // Format: "33kV Switchroom 1 - +Z01"
-        subsystemName = subsystemParts[0].trim(); // "33kV Switchroom 1"
-        subsystemCode = subsystemParts[1].trim(); // "+Z01"
-      } else {
-        // Fallback for non-standard format
-        subsystemName = subsystem;
-        subsystemCode = `Z${String(subsystemIndex).padStart(2, '0')}`;
-      }
-      
-      subsystemMapping[subsystem] = {
-        code: subsystemCode,
-        name: subsystemName,
-        full_name: `S${subsystemIndex} | ${subsystemCode} | ${subsystemName}`,
-        index: subsystemIndex
-      };
-      subsystemIndex++;
+  // Parse and sort subsystems by their code (+Z01, +Z02, +Z03...)
+  const parsedSubsystems = uniqueSubsystems.map(subsystem => {
+    const subsystemParts = subsystem.split(' - ');
+    let subsystemCode, subsystemName;
+    
+    if (subsystemParts.length === 2) {
+      // Format: "33kV Switchroom 1 - +Z01"
+      subsystemName = subsystemParts[0].trim(); // "33kV Switchroom 1"
+      subsystemCode = subsystemParts[1].trim(); // "+Z01"
+    } else {
+      // Fallback for non-standard format
+      subsystemName = subsystem;
+      subsystemCode = `Z${String(uniqueSubsystems.indexOf(subsystem) + 1).padStart(2, '0')}`;
     }
+    
+    return {
+      originalKey: subsystem,
+      code: subsystemCode,
+      name: subsystemName,
+      sortOrder: subsystemCode // Use code for sorting (+Z01, +Z02, etc.)
+    };
   });
 
-  console.log('Dynamic subsystem mapping created:', subsystemMapping);
+  // Sort by subsystem code (+Z01 first, then +Z02, etc.)
+  parsedSubsystems.sort((a, b) => a.sortOrder.localeCompare(b.sortOrder));
+
+  // Create mapping with correct S1, S2, S3... order
+  parsedSubsystems.forEach((subsystem, index) => {
+    const subsystemIndex = index + 1;
+    subsystemMapping[subsystem.originalKey] = {
+      code: subsystem.code,
+      name: subsystem.name,
+      full_name: `S${subsystemIndex} | ${subsystem.code} | ${subsystem.name}`,
+      index: subsystemIndex
+    };
+  });
+
+  console.log('Dynamic subsystem mapping created (sorted by code):', subsystemMapping);
 
   // Step 7: Generate comprehensive category statistics - FIXED: Include equipment array
   const categoryStats = {};
