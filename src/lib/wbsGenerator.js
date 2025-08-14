@@ -135,7 +135,8 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
   console.log('STEP 3: Creating Multiple Subsystems with ALL Categories');
   
   const subsystemMapping = processedEquipmentData.subsystemMapping || {};
-  const subsystemEntries = Object.entries(subsystemMapping);
+  const subsystemEntries = Object.entries(subsystemMapping)
+    .sort(([, a], [, b]) => a.index - b.index); // Sort by index to ensure S1, S2, S3... order
   
   if (subsystemEntries.length === 0) {
     console.log('No subsystems found, creating default S1 subsystem');
@@ -146,7 +147,8 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     }]);
   }
 
-  console.log(`Creating ${subsystemEntries.length} subsystems`);
+  console.log(`Creating ${subsystemEntries.length} subsystems in correct order:`, 
+    subsystemEntries.map(([key, data]) => data.full_name));
 
   // Group equipment by subsystem for distribution
   const equipmentBySubsystem = {};
@@ -180,8 +182,11 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     wbsStructure.push(subsystemStructure);
     console.log(`Added subsystem: ${subsystemWBSCode} - ${subsystemData.full_name}`);
 
-    // Create ALL standard categories under this subsystem (even empty ones)
-    Object.entries(EQUIPMENT_CATEGORIES).forEach(([categoryId, categoryName], categoryIndex) => {
+    // Create ALL standard categories under this subsystem (in sequential order 01-99)
+    const sortedCategories = Object.entries(EQUIPMENT_CATEGORIES)
+      .sort(([a], [b]) => a.localeCompare(b)); // Sort by category ID (01, 02, 03... 99)
+    
+    sortedCategories.forEach(([categoryId, categoryName], categoryIndex) => {
       const categoryWBSCode = `${subsystemWBSCode}.${categoryIndex + 1}`;
       
       const categoryStructure = {
@@ -419,8 +424,11 @@ const generateEmptyWBSStructure = (projectName) => {
     });
   });
 
-  // All standard categories under main subsystem
-  Object.entries(EQUIPMENT_CATEGORIES).forEach(([categoryId, categoryName], index) => {
+  // All standard categories under main subsystem (in sequential order)
+  const sortedCategories = Object.entries(EQUIPMENT_CATEGORIES)
+    .sort(([a], [b]) => a.localeCompare(b)); // Sort by category ID (01, 02, 03... 99)
+    
+  sortedCategories.forEach(([categoryId, categoryName], index) => {
     wbsStructure.push({
       wbs_code: `1.3.${index + 1}`,
       parent_wbs_code: '1.3',
