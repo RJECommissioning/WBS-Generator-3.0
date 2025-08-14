@@ -15,11 +15,14 @@ const safeToString = (value) => {
   return typeof value === 'string' ? value : String(value);
 };
 
-// Equipment code cleaning - FIXED: Don't clean parent field, handle separately
+// Equipment code cleaning - FIXED: Handle equipment vs parent differently
 const cleanEquipmentCode = (value) => {
   const stringValue = safeToString(value);
-  if (!stringValue || stringValue.trim() === '' || stringValue.trim() === '-') {
+  if (!stringValue || stringValue.trim() === '') {
     return '';
+  }
+  if (stringValue.trim() === '-') {
+    return ''; // Equipment numbers should never be "-"
   }
   return stringValue.trim().replace(/\s+/g, ' ');
 };
@@ -190,7 +193,7 @@ const analyzeParentChildRelationships = (equipmentList) => {
     // Debug: Show sample equipment codes and their parent fields
     const sampleItems = equipmentList.slice(0, 5);
     sampleItems.forEach((item, index) => {
-      const equipmentCode = cleanEquipmentCode(item.equipment_number);
+      const parentCode = cleanParentEquipmentCode(item.parent_equipment_number);
       const parentCode = cleanParentEquipmentCode(item.parent_equipment_number); // FIXED: Use new parent cleaning function
       console.log(`   Sample ${index + 1}: "${equipmentCode}" parent: "${parentCode || 'NULL (is parent)'}"`);
     });
