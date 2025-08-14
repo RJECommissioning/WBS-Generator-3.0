@@ -195,7 +195,7 @@ const analyzeParentChildRelationships = (equipmentList) => {
     const sampleItems = equipmentList.slice(0, 5);
     sampleItems.forEach((item, index) => {
       const equipmentCode = cleanEquipmentCode(item.equipment_number);
-      const parentCodeForDebug = cleanParentEquipmentCode(item.parent_equipment_number); // FIXED: Use new parent cleaning function
+      const parentCodeForDebug = cleanParentEquipmentCode(item.parent_equipment_number);
       console.log(`   Sample ${index + 1}: "${equipmentCode}" parent: "${parentCodeForDebug || 'NULL (is parent)'}"`);
     });
   }
