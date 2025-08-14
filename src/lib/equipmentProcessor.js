@@ -2,11 +2,12 @@ import { EQUIPMENT_PATTERNS, SUB_EQUIPMENT_PATTERNS, EQUIPMENT_CATEGORIES, COMMI
 import { stringHelpers, patternHelpers, arrayHelpers } from '../utils';
 
 /**
- * Enhanced Equipment Processor - FIXED FIELD NAMES AND PARENT HANDLING
+ * Enhanced Equipment Processor - COMPLETELY FIXED
  * CONSISTENT FIELD NAMES:
  * - parent_equipment_number (NOT parent_equipment_code)
  * - commissioning_yn (NOT commissioning_status)
  * FIXED: Proper handling of '-' symbol in parent_equipment_number
+ * FIXED: Build errors and runtime errors
  */
 
 // Helper function for safe string conversion
@@ -193,9 +194,9 @@ const analyzeParentChildRelationships = (equipmentList) => {
     // Debug: Show sample equipment codes and their parent fields
     const sampleItems = equipmentList.slice(0, 5);
     sampleItems.forEach((item, index) => {
-      const parentCode = cleanParentEquipmentCode(item.parent_equipment_number);
-      const parentCode = cleanParentEquipmentCode(item.parent_equipment_number); // FIXED: Use new parent cleaning function
-      console.log(`   Sample ${index + 1}: "${equipmentCode}" parent: "${parentCode || 'NULL (is parent)'}"`);
+      const equipmentCode = cleanEquipmentCode(item.equipment_number);
+      const parentCodeForDebug = cleanParentEquipmentCode(item.parent_equipment_number); // FIXED: Use new parent cleaning function
+      console.log(`   Sample ${index + 1}: "${equipmentCode}" parent: "${parentCodeForDebug || 'NULL (is parent)'}"`);
     });
   }
   
@@ -305,35 +306,36 @@ const processEquipmentList = (rawEquipmentList) => {
 
   console.log('Dynamic subsystem mapping created:', subsystemMapping);
 
-  // Step 7: Generate comprehensive category statistics
+  // Step 7: Generate comprehensive category statistics - FIXED: Include equipment array
   const categoryStats = {};
   
-  // Initialize all standard categories
+  // Initialize all standard categories - FIXED: Add equipment array
   for (const [categoryId, categoryName] of Object.entries(EQUIPMENT_CATEGORIES)) {
     categoryStats[categoryId] = {
       name: categoryName,
       count: 0,
+      equipment: [], // FIXED: Add this missing array
       parent_equipment: [],
       child_equipment: []
     };
   }
 
-// Populate category statistics from actual equipment
-categorizedEquipment.forEach(item => {
-  const category = item.category;
-  const equipmentCode = cleanEquipmentCode(item.equipment_number);
-  
-  if (categoryStats[category]) {
-    categoryStats[category].count++;
-    categoryStats[category].equipment.push(item); // ADD THIS LINE
+  // Populate category statistics from actual equipment
+  categorizedEquipment.forEach(item => {
+    const category = item.category;
+    const equipmentCode = cleanEquipmentCode(item.equipment_number);
     
-    if (item.is_sub_equipment) {
-      categoryStats[category].child_equipment.push(equipmentCode);
-    } else {
-      categoryStats[category].parent_equipment.push(equipmentCode);
+    if (categoryStats[category]) {
+      categoryStats[category].count++;
+      categoryStats[category].equipment.push(item); // FIXED: Now this array exists
+      
+      if (item.is_sub_equipment) {
+        categoryStats[category].child_equipment.push(equipmentCode);
+      } else {
+        categoryStats[category].parent_equipment.push(equipmentCode);
+      }
     }
-  }
-});
+  });
 
   console.log('ALL Equipment Categories (including unrecognized):');
   Object.entries(categoryStats).forEach(([categoryId, stats]) => {
@@ -433,4 +435,57 @@ export const categorizeEquipment = (equipmentList) => {
     console.error('Equipment categorization failed:', error);
     throw new Error(`Equipment categorization failed: ${error.message}`);
   }
+};
+
+// Additional utility functions
+export const filterEquipmentForWBS = (equipment) => {
+  return equipment.filter(item => {
+    const status = safeToString(item.commissioning_yn || '').toUpperCase(); // FIXED: Use commissioning_yn consistently
+    return status === 'Y' || status === 'TBC';
+  });
+};
+
+export const groupEquipmentBySubsystem = (equipment) => {
+  const subsystemGroups = {};
+  
+  equipment.forEach(item => {
+    const subsystem = item.subsystem || 'S1';
+    if (!subsystemGroups[subsystem]) {
+      subsystemGroups[subsystem] = [];
+    }
+    subsystemGroups[subsystem].push(item);
+  });
+  
+  return subsystemGroups;
+};
+
+export const validateCategorization = (equipment) => {
+  const validation = {
+    isValid: true,
+    errors: [],
+    warnings: [],
+    statistics: {
+      total_items: equipment.length,
+      categorized: equipment.filter(item => item.category && item.category !== '99').length,
+      unrecognised: equipment.filter(item => !item.category || item.category === '99').length,
+      sub_equipment: equipment.filter(item => item.is_sub_equipment).length,
+      parent_equipment: equipment.filter(item => !item.is_sub_equipment).length
+    }
+  };
+
+  return validation;
+};
+
+export const exportCategorizedEquipment = (equipment) => {
+  return equipment.map(item => ({
+    equipment_number: item.equipment_number,
+    description: item.description,
+    category: item.category,
+    category_name: item.category_name,
+    commissioning_yn: item.commissioning_yn, // FIXED: Use commissioning_yn consistently
+    is_sub_equipment: item.is_sub_equipment,
+    is_parent_equipment: item.is_parent_equipment,
+    parent_equipment_number: item.parent_equipment_number || '', // FIXED: Use parent_equipment_number consistently
+    subsystem: item.subsystem
+  }));
 };
