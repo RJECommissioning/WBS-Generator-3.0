@@ -219,6 +219,64 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     });
   });
 
+  // Step 3.5: Add TBC Equipment Section (NEW ADDITION)
+  console.log('STEP 3.5: Adding TBC Equipment Section');
+  
+  if (processedEquipmentData.tbcEquipment && processedEquipmentData.tbcEquipment.length > 0) {
+    // Calculate next available WBS code after all subsystems
+    const nextSectionNumber = subsystemEntries.length + 3; // +3 for M, P, and subsystems start at 3
+    const tbcSectionCode = `1.${nextSectionNumber}`;
+    
+    console.log(`Creating TBC section: ${tbcSectionCode} with ${processedEquipmentData.tbcEquipment.length} TBC items`);
+    
+    // Create TBC section header
+    const tbcSectionStructure = {
+      wbs_code: tbcSectionCode,
+      parent_wbs_code: '1',
+      wbs_name: 'TBC - Equipment To Be Confirmed',
+      equipment_number: null,
+      description: 'Equipment To Be Confirmed',
+      commissioning_yn: 'TBC',
+      category: 'TBC',
+      category_name: 'Equipment To Be Confirmed',
+      level: 2,
+      is_equipment: false,
+      is_structural: true,
+      subsystem: null
+    };
+    
+    wbsStructure.push(tbcSectionStructure);
+    console.log(`Added TBC section: ${tbcSectionCode} - TBC - Equipment To Be Confirmed`);
+    
+    // Add all TBC equipment under this section
+    processedEquipmentData.tbcEquipment.forEach((tbcItem, index) => {
+      const tbcItemCode = `${tbcSectionCode}.${index + 1}`;
+      
+      const tbcItemStructure = {
+        wbs_code: tbcItemCode,
+        parent_wbs_code: tbcSectionCode,
+        wbs_name: `${tbcItem.tbc_code || tbcItem.equipment_number} | ${tbcItem.description}`,
+        equipment_number: tbcItem.equipment_number,
+        description: tbcItem.description,
+        commissioning_yn: 'TBC',
+        category: 'TBC',
+        category_name: 'Equipment To Be Confirmed',
+        level: 3,
+        is_equipment: true,
+        is_structural: false,
+        subsystem: tbcItem.subsystem,
+        is_sub_equipment: false,
+        parent_equipment_number: null
+      };
+      
+      wbsStructure.push(tbcItemStructure);
+    });
+    
+    console.log(`Added ${processedEquipmentData.tbcEquipment.length} TBC equipment items to section ${tbcSectionCode}`);
+  } else {
+    console.log('No TBC equipment to add');
+  }
+
   // Step 4: Calculate Final Statistics
   console.log('STEP 4: Calculating Final Statistics');
   
