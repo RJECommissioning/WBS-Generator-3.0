@@ -9,14 +9,10 @@ import {
 import { stringHelpers, wbsHelpers, arrayHelpers } from '../utils';
 
 /**
- * Enhanced WBS Generator - CORRECTED for All Y-Status Equipment
- * CORRECT APPROACH:
- * - Handle ALL Y-status equipment (electrical patterns → 01-10, others → 99)
- * - ALL standard categories created (even empty ones)
- * - Proper parent-child nesting for all equipment types
- * - TBC section for all TBC items
- * - Energisation section for every project
- * - Category 99 may contain many items (non-electrical Y-status equipment)
+ * Enhanced WBS Generator - FIXED FIELD NAMES
+ * CONSISTENT FIELD NAMES:
+ * - parent_equipment_number (NOT parent_equipment_code)
+ * - commissioning_yn (NOT commissioning_status)
  */
 
 // Enhanced WBS Structure Generation
@@ -81,7 +77,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     wbs_name: projectName,
     equipment_number: null,
     description: projectName,
-    commissioning_status: null,
+    commissioning_yn: null, // FIXED: Use commissioning_yn consistently
     category: null,
     category_name: null,
     level: 1,
@@ -102,7 +98,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     wbs_name: 'M | Milestones',
     equipment_number: null,
     description: 'Project Milestones',
-    commissioning_status: null,
+    commissioning_yn: null, // FIXED: Use commissioning_yn consistently
     category: null,
     category_name: null,
     level: 2,
@@ -120,7 +116,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     wbs_name: 'P | Pre-requisites',
     equipment_number: null,
     description: 'Project Prerequisites',
-    commissioning_status: null,
+    commissioning_yn: null, // FIXED: Use commissioning_yn consistently
     category: null,
     category_name: null,
     level: 2,
@@ -142,7 +138,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     wbs_name: 'S1 | Z01 | Main Subsystem',
     equipment_number: null,
     description: 'Main Electrical Subsystem',
-    commissioning_status: null,
+    commissioning_yn: null, // FIXED: Use commissioning_yn consistently
     category: null,
     category_name: null,
     level: 2,
@@ -162,9 +158,9 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     return parseInt(a) - parseInt(b);
   });
 
-  orderedCategories.forEach(([categoryId, categoryName]) => {
+  orderedCategories.forEach(([categoryId, categoryName], index) => {
     const categoryEquipment = processedEquipmentData.categoryStats?.[categoryId]?.equipment || [];
-    const categoryCode = `${mainSubsystemCode}.${Object.keys(EQUIPMENT_CATEGORIES).indexOf(categoryId) + 1}`;
+    const categoryCode = `${mainSubsystemCode}.${index + 1}`;
     
     console.log(`Processing category ${categoryId}: ${categoryEquipment.length} items`);
     
@@ -175,7 +171,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
       wbs_name: `${categoryId} | ${categoryName}`,
       equipment_number: null,
       description: categoryName,
-      commissioning_status: null,
+      commissioning_yn: null, // FIXED: Use commissioning_yn consistently
       category: categoryId,
       category_name: categoryName,
       level: 3,
@@ -209,7 +205,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
       wbs_name: 'TBC - Equipment To Be Confirmed',
       equipment_number: null,
       description: 'Equipment requiring confirmation',
-      commissioning_status: 'TBC',
+      commissioning_yn: 'TBC', // FIXED: Use commissioning_yn consistently
       category: 'TBC',
       category_name: 'To Be Confirmed',
       level: 2,
@@ -221,53 +217,72 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     wbsStructure.push(tbcStructure);
     
     // Add TBC equipment items
-    console.log(`Adding ${processedEquipmentData.tbcEquipment.length} TBC equipment items to ${tbcSectionCode}`);
+    console.log(`Adding ${processedEquipmentData.tbcEquipment.length} TBC equipment items`);
     
     processedEquipmentData.tbcEquipment.forEach((equipment, index) => {
-      const equipmentCode = `${tbcSectionCode}.${index + 1}`;
-      const equipmentStructure = {
-        wbs_code: equipmentCode,
+      const tbcItemCode = `${tbcSectionCode}.${index + 1}`;
+      const tbcItemStructure = {
+        wbs_code: tbcItemCode,
         parent_wbs_code: tbcSectionCode,
-        wbs_name: `${equipment.equipment_number} | ${equipment.description}`,
+        wbs_name: `TBC${String(index + 1).padStart(3, '0')} | ${equipment.equipment_number} | ${equipment.description}`,
         equipment_number: equipment.equipment_number,
         description: equipment.description,
-        commissioning_status: 'TBC',
+        commissioning_yn: 'TBC', // FIXED: Use commissioning_yn consistently
         category: 'TBC',
         category_name: 'To Be Confirmed',
         level: 3,
         is_equipment: true,
         is_structural: false,
-        subsystem: equipment.subsystem || null,
-        parent_equipment_code: equipment.parent_equipment_number || null
+        subsystem: equipment.subsystem || 'S1',
+        parent_equipment_number: equipment.parent_equipment_number || null // FIXED: Use parent_equipment_number consistently
       };
       
-      wbsStructure.push(equipmentStructure);
-      console.log(`Added TBC item: ${equipmentCode} - ${equipment.equipment_number}`);
+      wbsStructure.push(tbcItemStructure);
     });
+    
+    console.log(`Added TBC section: ${tbcSectionCode} with ${processedEquipmentData.tbcEquipment.length} items`);
   }
 
-  // Step 5: Add E | Energisation Section
+  // Step 5: Add E | Energisation Section (every project needs this)
   console.log('STEP 5: Adding E | Energisation Section');
   addEnergisationSection(wbsStructure, '1');
 
-  // Step 6: WBS Generation Summary
-  console.log('STEP 6: WBS Generation Summary');
-  const structuralItems = wbsStructure.filter(item => !item.is_equipment).length;
-  const equipmentItems = wbsStructure.filter(item => item.is_equipment).length;
-  const levelCounts = {};
+  // Calculate final statistics
+  let equipmentItems = 0;
+  let structuralItems = 0;
+  let categoriesWithEquipment = 0;
+  let emptyCategories = 0;
+  let parentChildPairs = 0;
   
-  for (let i = 1; i <= 5; i++) {
-    levelCounts[`level${i}`] = wbsStructure.filter(item => item.level === i).length;
-  }
-  
-  const categoriesWithEquipment = Object.values(processedEquipmentData.categoryStats || {})
-    .filter(stats => stats.count > 0).length;
-  const emptyCategories = Object.keys(EQUIPMENT_CATEGORIES).length - categoriesWithEquipment;
-  const parentChildPairs = processedEquipmentData.relationshipAnalysis?.successfulMatches || 0;
+  const levelCounts = { level1: 0, level2: 0, level3: 0, level4: 0, level5: 0 };
 
-  console.log('WBS Structure Summary:');
+  wbsStructure.forEach(item => {
+    levelCounts[`level${item.level}`]++;
+    
+    if (item.is_equipment) {
+      equipmentItems++;
+      
+      // Count parent-child pairs
+      if (item.level === 5) {
+        parentChildPairs++;
+      }
+    } else {
+      structuralItems++;
+    }
+    
+    // Count categories with equipment
+    if (item.level === 3 && item.category && item.category !== 'TBC') {
+      const hasEquipment = processedEquipmentData.categoryStats?.[item.category]?.count > 0;
+      if (hasEquipment) {
+        categoriesWithEquipment++;
+      } else {
+        emptyCategories++;
+      }
+    }
+  });
+
+  console.log(`FINAL WBS STRUCTURE STATISTICS:`);
   console.log(`   Total WBS Items: ${wbsStructure.length}`);
-  console.log(`   Level Distribution: L1=${levelCounts.level1}, L2=${levelCounts.level2}, L3=${levelCounts.level3}, L4=${levelCounts.level4}, L5=${levelCounts.level5}`);
   console.log(`   Equipment Items: ${equipmentItems}`);
   console.log(`   Structural Items: ${structuralItems}`);
   console.log(`   Categories with Equipment: ${categoriesWithEquipment}`);
@@ -324,14 +339,14 @@ const addEnhancedEquipmentForCategory = (wbsStructure, categoryCode, categoryEqu
       wbs_name: `${equipment.equipment_number} | ${equipment.description}`,
       equipment_number: equipment.equipment_number,
       description: equipment.description,
-      commissioning_status: equipment.commissioning_status,
+      commissioning_yn: equipment.commissioning_yn, // FIXED: Use commissioning_yn consistently
       category: categoryId,
       category_name: equipment.category_name,
       level: 4,
       is_equipment: true,
       is_structural: false,
       subsystem: equipment.subsystem || 'S1',
-      parent_equipment_code: equipment.parent_equipment_number || null
+      parent_equipment_number: equipment.parent_equipment_number || null // FIXED: Use parent_equipment_number consistently
     };
     
     wbsStructure.push(equipmentStructure);
@@ -352,14 +367,14 @@ const addEnhancedEquipmentForCategory = (wbsStructure, categoryCode, categoryEqu
           wbs_name: `${childEquipment.equipment_number} | ${childEquipment.description}`,
           equipment_number: childEquipment.equipment_number,
           description: childEquipment.description,
-          commissioning_status: childEquipment.commissioning_status,
+          commissioning_yn: childEquipment.commissioning_yn, // FIXED: Use commissioning_yn consistently
           category: categoryId,
           category_name: childEquipment.category_name,
           level: 5,
           is_equipment: true,
           is_structural: false,
           subsystem: childEquipment.subsystem || 'S1',
-          parent_equipment_code: childEquipment.parent_equipment_number
+          parent_equipment_number: childEquipment.parent_equipment_number // FIXED: Use parent_equipment_number consistently
         };
         
         wbsStructure.push(childStructure);
@@ -392,14 +407,14 @@ const addEnhancedEquipmentForCategory = (wbsStructure, categoryCode, categoryEqu
         wbs_name: `${equipment.equipment_number} | ${equipment.description}`,
         equipment_number: equipment.equipment_number,
         description: equipment.description,
-        commissioning_status: equipment.commissioning_status,
+        commissioning_yn: equipment.commissioning_yn, // FIXED: Use commissioning_yn consistently
         category: categoryId,
         category_name: equipment.category_name,
         level: 4,
         is_equipment: true,
         is_structural: false,
         subsystem: equipment.subsystem || 'S1',
-        parent_equipment_code: equipment.parent_equipment_number,
+        parent_equipment_number: equipment.parent_equipment_number, // FIXED: Use parent_equipment_number consistently
         orphaned_child: true
       };
       
@@ -421,7 +436,7 @@ const addEnergisationSection = (wbsStructure, parentCode) => {
     wbs_name: 'E | Energisation',
     equipment_number: null,
     description: 'Energisation and Testing',
-    commissioning_status: null,
+    commissioning_yn: null, // FIXED: Use commissioning_yn consistently
     category: null,
     category_name: null,
     level: 2,
@@ -448,7 +463,7 @@ const addEnergisationSection = (wbsStructure, parentCode) => {
       wbs_name: section.name,
       equipment_number: null,
       description: section.description,
-      commissioning_status: null,
+      commissioning_yn: null, // FIXED: Use commissioning_yn consistently
       category: null,
       category_name: null,
       level: 3,
