@@ -255,7 +255,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
       const tbcItemStructure = {
         wbs_code: tbcItemCode,
         parent_wbs_code: tbcSectionCode,
-        wbs_name: `${tbcItem.tbc_code || tbcItem.equipment_number} | ${tbcItem.description}`,
+        wbs_name: `${tbcItem.equipment_number} | ${tbcItem.description}`,
         equipment_number: tbcItem.equipment_number,
         description: tbcItem.description,
         commissioning_yn: 'TBC',
