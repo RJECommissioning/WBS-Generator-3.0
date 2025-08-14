@@ -26,7 +26,7 @@ export const EQUIPMENT_CATEGORIES = {
   '99': 'Unrecognised Equipment'
 };
 
-// Equipment Pattern Matching (from your documentation)
+// Equipment Pattern Matching (from your documentation) - UPDATED with missing patterns
 export const EQUIPMENT_PATTERNS = {
   // Protection Panels (02)
   '02': [
@@ -62,27 +62,41 @@ export const EQUIPMENT_PATTERNS = {
     { pattern: /^BCR\d*/i, name: 'Battery Charger' }
   ],
   
-  // Earthing (07)
+  // Earthing (07) - UPDATED: Added EG01 pattern
   '07': [
     { pattern: /^E\d+/i, name: 'HV Earth Switch' },
     { pattern: /^EB\d+/i, name: 'Earth Bar' },
     { pattern: /^EEP\d+/i, name: 'Earthing Pit' },
-    { pattern: /^MEB\d*/i, name: 'Main Earth Bar' }
+    { pattern: /^MEB\d*/i, name: 'Main Earth Bar' },
+    { pattern: /^EG01-/i, name: 'Earthing Pit' }
   ],
   
-  // Building Services (08)
+  // Building Services (08) - UPDATED: Added security, fire, and beacon patterns
   '08': [
     { pattern: /^-?FM\d+/i, name: 'Fire Indication Panel' },
     { pattern: /^-?A\d*/i, name: 'SDU Switchroom Security Panel' },
     { pattern: /^LT\d*/i, name: 'Lighting' },
-    { pattern: /^HTP\d*/i, name: 'Heat Tracing Panel' }
+    { pattern: /^HTP\d*/i, name: 'Heat Tracing Panel' },
+    { pattern: /^DDC/i, name: 'Computer' },
+    { pattern: /^ESS-/i, name: 'Aspirating Smoke Detection' },
+    { pattern: /^ISS-/i, name: 'Detection Equipment' },
+    { pattern: /^MCP-/i, name: 'Manual Call Point' },
+    { pattern: /^POSD-/i, name: 'Fire System Equipment' },
+    { pattern: /^LS1-/i, name: 'Detection Equipment' },
+    { pattern: /^-BE/i, name: 'Beacon/Strobe' }
   ],
   
-  // Ancillary Systems (10)
+  // Ancillary Systems (10) - UPDATED: Added computer network pattern
   '10': [
     { pattern: /^PSU\d*/i, name: 'Power Supply Units' },
     { pattern: /^UPS\d*/i, name: 'Uninterruptible Power Supply' },
-    { pattern: /^BCR\d*/i, name: 'Battery Charger' }
+    { pattern: /^BCR\d*/i, name: 'Battery Charger' },
+    { pattern: /^-Y/i, name: 'Computer Network' },
+    { pattern: /^KP-/i, name: 'Security Equipment' },
+    { pattern: /^MPIR-/i, name: 'Security Equipment' },
+    { pattern: /^REED-/i, name: 'Security Equipment' },
+    { pattern: /^SCR-/i, name: 'Security Equipment' },
+    { pattern: /^WBC-/i, name: 'Security Equipment' }
   ]
 };
 
