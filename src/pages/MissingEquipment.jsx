@@ -58,8 +58,9 @@ const MissingEquipment = () => {
   };
 
   // Step 1: Handle XER file upload and parsing
-  const handleXERFileUpload = async (file) => {
-    try {
+ const handleXERFileUpload = async (file) => {
+  console.log('🚨 UPLOAD FUNCTION CALLED!', file); // 
+  try {
       console.log('=== STARTING XER FILE UPLOAD ===');
       addDebugInfo(`Starting XER file upload: ${file.name} (${file.size} bytes)`);
       
