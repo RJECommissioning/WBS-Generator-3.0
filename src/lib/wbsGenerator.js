@@ -9,16 +9,17 @@ import {
 import { stringHelpers, wbsHelpers, arrayHelpers } from '../utils';
 
 /**
- * Enhanced WBS Generator - FIXED FIELD NAMES
+ * Enhanced WBS Generator - MULTIPLE SUBSYSTEMS with ALL CATEGORIES
  * CONSISTENT FIELD NAMES:
  * - parent_equipment_number (NOT parent_equipment_code)
  * - commissioning_yn (NOT commissioning_status)
+ * UPDATED: Creates multiple subsystems (S1, S2, S3...) each with ALL standard categories
  */
 
 // Enhanced WBS Structure Generation
 export const generateWBSStructure = (inputData, projectName = '5737 Summerfield Project') => {
   try {
-    console.log('ENHANCED WBS GENERATION - ELECTRICAL EQUIPMENT FOCUSED');
+    console.log('ENHANCED WBS GENERATION - MULTIPLE SUBSYSTEMS WITH ALL CATEGORIES');
     
     // Handle input data format
     let actualEquipmentArray = [];
@@ -35,6 +36,7 @@ export const generateWBSStructure = (inputData, projectName = '5737 Summerfield 
       processedEquipmentData = inputData;
       
       console.log(`Processing: ${actualEquipmentArray.length} electrical items, ${actualTBCArray.length} TBC items`);
+      console.log('Subsystem mapping:', actualSubsystemMapping);
     } else if (Array.isArray(inputData)) {
       // Legacy array format
       actualEquipmentArray = inputData;
@@ -46,7 +48,7 @@ export const generateWBSStructure = (inputData, projectName = '5737 Summerfield 
       return generateEmptyWBSStructure(projectName);
     }
 
-    return generateEnhancedWBSStructure(processedEquipmentData || { equipment: actualEquipmentArray, tbcEquipment: actualTBCArray }, projectName);
+    return generateEnhancedWBSStructure(processedEquipmentData || { equipment: actualEquipmentArray, tbcEquipment: actualTBCArray, subsystemMapping: actualSubsystemMapping }, projectName);
 
   } catch (error) {
     console.error('WBS generation failed:', error);
@@ -54,12 +56,13 @@ export const generateWBSStructure = (inputData, projectName = '5737 Summerfield 
   }
 };
 
-// Enhanced WBS Structure Generation
+// Enhanced WBS Structure Generation with Multiple Subsystems
 const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
-  console.log('CORRECTED WBS GENERATION - ALL Y-STATUS EQUIPMENT');
+  console.log('CREATING MULTIPLE SUBSYSTEMS - EACH WITH ALL CATEGORIES');
   console.log(`Equipment data:`, {
     allYEquipment: processedEquipmentData.equipment?.length || 0,
     tbcEquipment: processedEquipmentData.tbcEquipment?.length || 0,
+    subsystems: Object.keys(processedEquipmentData.subsystemMapping || {}).length,
     categories: Object.keys(processedEquipmentData.categoryStats || {}).length,
     unrecognizedCount: processedEquipmentData.categoryStats?.['99']?.count || 0
   });
@@ -77,7 +80,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     wbs_name: projectName,
     equipment_number: null,
     description: projectName,
-    commissioning_yn: null, // FIXED: Use commissioning_yn consistently
+    commissioning_yn: null,
     category: null,
     category_name: null,
     level: 1,
@@ -98,7 +101,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     wbs_name: 'M | Milestones',
     equipment_number: null,
     description: 'Project Milestones',
-    commissioning_yn: null, // FIXED: Use commissioning_yn consistently
+    commissioning_yn: null,
     category: null,
     category_name: null,
     level: 2,
@@ -116,7 +119,7 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
     wbs_name: 'P | Pre-requisites',
     equipment_number: null,
     description: 'Project Prerequisites',
-    commissioning_yn: null, // FIXED: Use commissioning_yn consistently
+    commissioning_yn: null,
     category: null,
     category_name: null,
     level: 2,
@@ -128,151 +131,120 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
   wbsStructure.push(prerequisiteStructure);
   console.log(`Added prerequisites: 1.2 - P | Pre-requisites`);
 
-  // Step 3: Create Main Subsystem Structure with ALL Categories (including empty ones)
-  console.log('STEP 3: Creating ALL Standard Categories (even empty ones)');
+  // Step 3: Create Multiple Subsystems - Each with ALL Categories
+  console.log('STEP 3: Creating Multiple Subsystems with ALL Categories');
   
-  const mainSubsystemCode = '1.3';
-  const mainSubsystemStructure = {
-    wbs_code: mainSubsystemCode,
-    parent_wbs_code: '1',
-    wbs_name: 'S1 | Z01 | Main Subsystem',
-    equipment_number: null,
-    description: 'Main Electrical Subsystem',
-    commissioning_yn: null, // FIXED: Use commissioning_yn consistently
-    category: null,
-    category_name: null,
-    level: 2,
-    is_equipment: false,
-    is_structural: true,
-    subsystem: 'S1'
-  };
+  const subsystemMapping = processedEquipmentData.subsystemMapping || {};
+  const subsystemEntries = Object.entries(subsystemMapping);
   
-  wbsStructure.push(mainSubsystemStructure);
-  console.log(`Added main subsystem: ${mainSubsystemCode} - S1 | Z01 | Main Subsystem`);
+  if (subsystemEntries.length === 0) {
+    console.log('No subsystems found, creating default S1 subsystem');
+    // Create default subsystem
+    subsystemEntries.push(['Default', { 
+      full_name: 'S1 | Z01 | Main Subsystem',
+      index: 1 
+    }]);
+  }
 
-  // Create ALL standard categories (01-10, 99) even if empty
-  const orderedCategories = Object.entries(EQUIPMENT_CATEGORIES).sort(([a], [b]) => {
-    // Sort numerically: 01, 02, 03, ..., 10, 99
-    if (a === '99') return 1;
-    if (b === '99') return -1;
-    return parseInt(a) - parseInt(b);
-  });
+  console.log(`Creating ${subsystemEntries.length} subsystems`);
 
-  orderedCategories.forEach(([categoryId, categoryName], index) => {
-    const categoryEquipment = processedEquipmentData.categoryStats?.[categoryId]?.equipment || [];
-    const categoryCode = `${mainSubsystemCode}.${index + 1}`;
-    
-    console.log(`Processing category ${categoryId}: ${categoryEquipment.length} items`);
-    
-    // Create category even if empty
-    const categoryStructure = {
-      wbs_code: categoryCode,
-      parent_wbs_code: mainSubsystemCode,
-      wbs_name: `${categoryId} | ${categoryName}`,
-      equipment_number: null,
-      description: categoryName,
-      commissioning_yn: null, // FIXED: Use commissioning_yn consistently
-      category: categoryId,
-      category_name: categoryName,
-      level: 3,
-      is_equipment: false,
-      is_structural: true,
-      subsystem: 'S1'
-    };
-    
-    wbsStructure.push(categoryStructure);
-    console.log(`Added category: ${categoryCode} - ${categoryId} | ${categoryName}`);
-
-    if (categoryEquipment.length === 0) {
-      console.log(`Category ${categoryId} is empty - skipping equipment addition`);
-    } else {
-      console.log(`Adding equipment for category ${categoryId}: ${categoryEquipment.length} items`);
-      
-      // Add enhanced equipment for category
-      addEnhancedEquipmentForCategory(wbsStructure, categoryCode, categoryEquipment, categoryId);
-      console.log(`Successfully added equipment to category ${categoryId}`);
+  // Group equipment by subsystem for distribution
+  const equipmentBySubsystem = {};
+  processedEquipmentData.equipment?.forEach(item => {
+    const subsystemKey = item.subsystem || 'Default';
+    if (!equipmentBySubsystem[subsystemKey]) {
+      equipmentBySubsystem[subsystemKey] = [];
     }
+    equipmentBySubsystem[subsystemKey].push(item);
   });
 
-  // Step 4: Add TBC Section with all TBC items
-  console.log('STEP 4: Adding TBC Section with', processedEquipmentData.tbcEquipment?.length || 0, 'items');
-  
-  if (processedEquipmentData.tbcEquipment && processedEquipmentData.tbcEquipment.length > 0) {
-    const tbcSectionCode = '1.4';
-    const tbcStructure = {
-      wbs_code: tbcSectionCode,
+  subsystemEntries.forEach(([subsystemKey, subsystemData], subsystemIndex) => {
+    const subsystemWBSCode = `1.${subsystemIndex + 3}`; // 1.3, 1.4, 1.5, etc.
+    
+    // Create subsystem header
+    const subsystemStructure = {
+      wbs_code: subsystemWBSCode,
       parent_wbs_code: '1',
-      wbs_name: 'TBC - Equipment To Be Confirmed',
+      wbs_name: subsystemData.full_name,
       equipment_number: null,
-      description: 'Equipment requiring confirmation',
-      commissioning_yn: 'TBC', // FIXED: Use commissioning_yn consistently
-      category: 'TBC',
-      category_name: 'To Be Confirmed',
+      description: subsystemData.full_name,
+      commissioning_yn: null,
+      category: null,
+      category_name: null,
       level: 2,
       is_equipment: false,
       is_structural: true,
-      subsystem: null
+      subsystem: subsystemKey
     };
     
-    wbsStructure.push(tbcStructure);
-    
-    // Add TBC equipment items
-    console.log(`Adding ${processedEquipmentData.tbcEquipment.length} TBC equipment items`);
-    
-    processedEquipmentData.tbcEquipment.forEach((equipment, index) => {
-      const tbcItemCode = `${tbcSectionCode}.${index + 1}`;
-      const tbcItemStructure = {
-        wbs_code: tbcItemCode,
-        parent_wbs_code: tbcSectionCode,
-        wbs_name: `TBC${String(index + 1).padStart(3, '0')} | ${equipment.equipment_number} | ${equipment.description}`,
-        equipment_number: equipment.equipment_number,
-        description: equipment.description,
-        commissioning_yn: 'TBC', // FIXED: Use commissioning_yn consistently
-        category: 'TBC',
-        category_name: 'To Be Confirmed',
+    wbsStructure.push(subsystemStructure);
+    console.log(`Added subsystem: ${subsystemWBSCode} - ${subsystemData.full_name}`);
+
+    // Create ALL standard categories under this subsystem (even empty ones)
+    Object.entries(EQUIPMENT_CATEGORIES).forEach(([categoryId, categoryName], categoryIndex) => {
+      const categoryWBSCode = `${subsystemWBSCode}.${categoryIndex + 1}`;
+      
+      const categoryStructure = {
+        wbs_code: categoryWBSCode,
+        parent_wbs_code: subsystemWBSCode,
+        wbs_name: `${categoryId} | ${categoryName}`,
+        equipment_number: null,
+        description: categoryName,
+        commissioning_yn: null,
+        category: categoryId,
+        category_name: categoryName,
         level: 3,
-        is_equipment: true,
-        is_structural: false,
-        subsystem: equipment.subsystem || 'S1',
-        parent_equipment_number: equipment.parent_equipment_number || null // FIXED: Use parent_equipment_number consistently
+        is_equipment: false,
+        is_structural: true,
+        subsystem: subsystemKey
       };
       
-      wbsStructure.push(tbcItemStructure);
+      wbsStructure.push(categoryStructure);
+      
+      // Add equipment for this subsystem + category combination
+      const equipmentForThisSubsystem = equipmentBySubsystem[subsystemKey] || [];
+      const equipmentForThisCategory = equipmentForThisSubsystem.filter(item => item.category === categoryId);
+      
+      if (equipmentForThisCategory.length > 0) {
+        console.log(`   Category ${categoryId}: ${equipmentForThisCategory.length} equipment items`);
+        addEquipmentToCategory(wbsStructure, categoryWBSCode, equipmentForThisCategory, processedEquipmentData);
+      } else {
+        console.log(`   Category ${categoryId}: 0 equipment items (empty but created)`);
+      }
     });
-    
-    console.log(`Added TBC section: ${tbcSectionCode} with ${processedEquipmentData.tbcEquipment.length} items`);
-  }
+  });
 
-  // Step 5: Add E | Energisation Section (every project needs this)
-  console.log('STEP 5: Adding E | Energisation Section');
-  addEnergisationSection(wbsStructure, '1');
-
-  // Calculate final statistics
+  // Step 4: Calculate Final Statistics
+  console.log('STEP 4: Calculating Final Statistics');
+  
   let equipmentItems = 0;
   let structuralItems = 0;
+  let parentChildPairs = 0;
   let categoriesWithEquipment = 0;
   let emptyCategories = 0;
-  let parentChildPairs = 0;
   
-  const levelCounts = { level1: 0, level2: 0, level3: 0, level4: 0, level5: 0 };
+  const levelCounts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 
   wbsStructure.forEach(item => {
-    levelCounts[`level${item.level}`]++;
-    
     if (item.is_equipment) {
       equipmentItems++;
-      
-      // Count parent-child pairs
-      if (item.level === 5) {
-        parentChildPairs++;
-      }
     } else {
       structuralItems++;
     }
     
-    // Count categories with equipment
-    if (item.level === 3 && item.category && item.category !== 'TBC') {
-      const hasEquipment = processedEquipmentData.categoryStats?.[item.category]?.count > 0;
+    if (item.level && levelCounts[item.level] !== undefined) {
+      levelCounts[item.level]++;
+    }
+    
+    if (item.is_equipment && item.parent_equipment_number) {
+      parentChildPairs++;
+    }
+  });
+
+  // Count categories with/without equipment
+  Object.keys(EQUIPMENT_CATEGORIES).forEach(categoryId => {
+    if (processedEquipmentData.categoryStats) {
+      const hasEquipment = processedEquipmentData.categoryStats[categoryId]?.count > 0;
       if (hasEquipment) {
         categoriesWithEquipment++;
       } else {
@@ -316,175 +288,116 @@ const generateEnhancedWBSStructure = (processedEquipmentData, projectName) => {
   };
 };
 
-// Enhanced equipment addition for categories with proper parent-child nesting
-const addEnhancedEquipmentForCategory = (wbsStructure, categoryCode, categoryEquipment, categoryId) => {
-  console.log(`Adding enhanced equipment for category ${categoryId}: ${categoryEquipment.length} items`);
+// Enhanced equipment addition for categories with proper parent-child handling
+const addEquipmentToCategory = (wbsStructure, categoryWBSCode, equipmentList, processedEquipmentData) => {
+  console.log(`Adding equipment to category ${categoryWBSCode}: ${equipmentList.length} items`);
   
   // Separate parent and child equipment
-  const parentEquipment = categoryEquipment.filter(item => !item.is_sub_equipment);
-  const childEquipment = categoryEquipment.filter(item => item.is_sub_equipment);
+  const parentEquipment = equipmentList.filter(item => !item.is_sub_equipment);
+  const childEquipment = equipmentList.filter(item => item.is_sub_equipment);
   
-  console.log(`Category ${categoryId}: ${parentEquipment.length} parents, ${childEquipment.length} children`);
-
+  console.log(`   Parents: ${parentEquipment.length}, Children: ${childEquipment.length}`);
+  
   // Add parent equipment first
-  let equipmentIndex = 1;
-  
-  console.log(`STARTING to add ${parentEquipment.length} parent equipment items...`);
-  
-  parentEquipment.forEach((equipment, index) => {
-    const equipmentCode = `${categoryCode}.${equipmentIndex}`;
+  let equipmentCounter = 1;
+  parentEquipment.forEach(equipment => {
+    const equipmentWBSCode = `${categoryWBSCode}.${equipmentCounter}`;
+    
     const equipmentStructure = {
-      wbs_code: equipmentCode,
-      parent_wbs_code: categoryCode,
+      wbs_code: equipmentWBSCode,
+      parent_wbs_code: categoryWBSCode,
       wbs_name: `${equipment.equipment_number} | ${equipment.description}`,
       equipment_number: equipment.equipment_number,
       description: equipment.description,
-      commissioning_yn: equipment.commissioning_yn, // FIXED: Use commissioning_yn consistently
-      category: categoryId,
+      commissioning_yn: equipment.commissioning_yn,
+      category: equipment.category,
       category_name: equipment.category_name,
       level: 4,
       is_equipment: true,
       is_structural: false,
-      subsystem: equipment.subsystem || 'S1',
-      parent_equipment_number: equipment.parent_equipment_number || null // FIXED: Use parent_equipment_number consistently
+      subsystem: equipment.subsystem,
+      is_sub_equipment: false,
+      parent_equipment_number: equipment.parent_equipment_number
     };
     
     wbsStructure.push(equipmentStructure);
     
-    // Find and add child equipment for this parent
+    // Add child equipment under this parent
     const childrenForThisParent = childEquipment.filter(child => 
       child.parent_equipment_number === equipment.equipment_number
     );
     
     if (childrenForThisParent.length > 0) {
-      console.log(`Adding ${childrenForThisParent.length} children for parent ${equipment.equipment_number}`);
+      console.log(`   Adding ${childrenForThisParent.length} children for parent ${equipment.equipment_number}`);
       
-      childrenForThisParent.forEach((childEquipment, childIndex) => {
-        const childCode = `${equipmentCode}.${childIndex + 1}`;
+      childrenForThisParent.forEach((child, childIndex) => {
+        const childWBSCode = `${equipmentWBSCode}.${childIndex + 1}`;
+        
         const childStructure = {
-          wbs_code: childCode,
-          parent_wbs_code: equipmentCode,
-          wbs_name: `${childEquipment.equipment_number} | ${childEquipment.description}`,
-          equipment_number: childEquipment.equipment_number,
-          description: childEquipment.description,
-          commissioning_yn: childEquipment.commissioning_yn, // FIXED: Use commissioning_yn consistently
-          category: categoryId,
-          category_name: childEquipment.category_name,
+          wbs_code: childWBSCode,
+          parent_wbs_code: equipmentWBSCode,
+          wbs_name: `${child.equipment_number} | ${child.description}`,
+          equipment_number: child.equipment_number,
+          description: child.description,
+          commissioning_yn: child.commissioning_yn,
+          category: child.category,
+          category_name: child.category_name,
           level: 5,
           is_equipment: true,
           is_structural: false,
-          subsystem: childEquipment.subsystem || 'S1',
-          parent_equipment_number: childEquipment.parent_equipment_number // FIXED: Use parent_equipment_number consistently
+          subsystem: child.subsystem,
+          is_sub_equipment: true,
+          parent_equipment_number: child.parent_equipment_number
         };
         
         wbsStructure.push(childStructure);
-        console.log(`Added child: ${childCode} - ${childEquipment.equipment_number}`);
+        console.log(`     Added child: ${childWBSCode} - ${child.equipment_number}`);
       });
     }
     
-    equipmentIndex++;
-    
-    if (index % 10 === 0 && index > 0) {
-      console.log(`Progress: Added ${index + 1}/${parentEquipment.length} parent equipment items`);
-    }
+    equipmentCounter++;
   });
   
-  console.log(`FINISHED adding parent equipment. Total WBS items now: ${wbsStructure.length}`);
-
-  // Add any orphaned child equipment (children without parents in the same category)
-  const orphanedChildren = childEquipment.filter(child => 
-    !parentEquipment.some(parent => parent.equipment_number === child.parent_equipment_number)
-  );
-  
-  if (orphanedChildren.length > 0) {
-    console.log(`Adding ${orphanedChildren.length} orphaned child equipment items...`);
-    
-    orphanedChildren.forEach((equipment, index) => {
-      const equipmentCode = `${categoryCode}.${equipmentIndex}`;
-      const equipmentStructure = {
-        wbs_code: equipmentCode,
-        parent_wbs_code: categoryCode,
-        wbs_name: `${equipment.equipment_number} | ${equipment.description}`,
-        equipment_number: equipment.equipment_number,
-        description: equipment.description,
-        commissioning_yn: equipment.commissioning_yn, // FIXED: Use commissioning_yn consistently
-        category: categoryId,
-        category_name: equipment.category_name,
-        level: 4,
-        is_equipment: true,
-        is_structural: false,
-        subsystem: equipment.subsystem || 'S1',
-        parent_equipment_number: equipment.parent_equipment_number, // FIXED: Use parent_equipment_number consistently
-        orphaned_child: true
-      };
-      
-      wbsStructure.push(equipmentStructure);
-      console.log(`Added orphaned child: ${equipmentCode} - ${equipment.equipment_number}`);
-      equipmentIndex++;
-    });
-  }
+  console.log(`   Finished adding ${parentEquipment.length} parent equipment items to ${categoryWBSCode}`);
 };
 
-// Add E | Energisation section to every project
+// Enhanced energisation section generation
 const addEnergisationSection = (wbsStructure, parentCode) => {
-  console.log('ADDING E | ENERGISATION SECTION to', parentCode);
+  console.log(`Adding E | Energisation section under parent: ${parentCode}`);
   
-  const energisationCode = '1.5';
-  const energisationStructure = {
+  // Split the parent code and increment for energisation
+  const parentParts = parentCode.split('.');
+  const energisationNumber = parseInt(parentParts[parentParts.length - 1]) + 1;
+  const energisationCode = parentParts.slice(0, -1).concat([energisationNumber]).join('.');
+  
+  const energisationSection = {
     wbs_code: energisationCode,
     parent_wbs_code: parentCode,
     wbs_name: 'E | Energisation',
     equipment_number: null,
-    description: 'Energisation and Testing',
-    commissioning_yn: null, // FIXED: Use commissioning_yn consistently
+    description: 'Project Energisation',
+    commissioning_yn: null,
     category: null,
     category_name: null,
-    level: 2,
+    level: parentParts.length,
     is_equipment: false,
     is_structural: true,
     subsystem: null
   };
   
-  wbsStructure.push(energisationStructure);
-
-  // Add energisation sub-sections
-  const energisationSubSections = [
-    { name: 'System', description: 'System Testing' },
-    { name: 'Energisation', description: 'Energisation Process' },
-    { name: 'Pre-Energisation', description: 'Pre-Energisation Activities' },
-    { name: 'Post Energisation', description: 'Post Energisation Activities' }
-  ];
+  wbsStructure.push(energisationSection);
+  console.log(`Added energisation: ${energisationCode} - E | Energisation`);
   
-  energisationSubSections.forEach((section, index) => {
-    const sectionCode = `${energisationCode}.${index + 1}`;
-    const sectionStructure = {
-      wbs_code: sectionCode,
-      parent_wbs_code: energisationCode,
-      wbs_name: section.name,
-      equipment_number: null,
-      description: section.description,
-      commissioning_yn: null, // FIXED: Use commissioning_yn consistently
-      category: null,
-      category_name: null,
-      level: 3,
-      is_equipment: false,
-      is_structural: true,
-      subsystem: null
-    };
-    
-    wbsStructure.push(sectionStructure);
-  });
-  
-  console.log(`Added Energisation section: ${energisationCode}`);
+  return energisationCode;
 };
 
-// Generate empty WBS structure when no equipment provided
+// Enhanced empty WBS structure generation for fallback
 const generateEmptyWBSStructure = (projectName) => {
-  console.log('Generating empty WBS structure with standard categories');
+  console.log('GENERATING EMPTY WBS STRUCTURE');
   
   const wbsStructure = [];
-  
-  // Project root
+
+  // Project Root
   wbsStructure.push({
     wbs_code: '1',
     parent_wbs_code: null,
