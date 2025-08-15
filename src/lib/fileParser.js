@@ -20,13 +20,13 @@ const detectFileType = (filename, content = '', fileBuffer = null) => {
   const extension = filename.split('.').pop().toLowerCase();
   console.log('File extension:', extension);
   
-  // 1. Excel files (binary detection)
+  // 1. Excel files by extension
   if (extension === 'xlsx' || extension === 'xls') {
     console.log('✅ Detected as Excel by extension');
     return 'excel_equipment_list';
   }
   
-  // 2. Excel files disguised as CSV (buffer detection)
+  // 2. Excel files disguised as CSV (binary detection)
   if (fileBuffer && extension === 'csv') {
     const uint8Array = new Uint8Array(fileBuffer.slice(0, 4));
     const header = Array.from(uint8Array).map(b => String.fromCharCode(b)).join('');
@@ -37,39 +37,34 @@ const detectFileType = (filename, content = '', fileBuffer = null) => {
     }
   }
   
-  // 3. XER files by extension
-  if (extension === 'txt' && content.includes('%T PROJWBS')) {
-    console.log('✅ Detected as XER by extension');
+  // 3. XER files by extension (.xer)
+  if (extension === 'xer') {
+    console.log('✅ Detected as XER by extension (.xer)');
     return 'xer';
   }
   
-  // 4. Content-based detection for text files (.txt, .csv)
-  if (content && content.length > 0) {
-    console.log('Analyzing content for type detection...');
+  // 4. XER files by content (.txt with PROJWBS)
+  if (extension === 'txt' && content.includes('%T PROJWBS')) {
+    console.log('✅ Detected as XER by content (.txt with PROJWBS)');
+    return 'xer';
+  }
+  
+  // 5. CSV content analysis
+  if (extension === 'csv' && content && content.length > 0) {
+    console.log('🔍 Analyzing CSV content...');
+    const lines = content.split('\n').slice(0, 5);
+    const headers = lines[0].toLowerCase();
     
-    // XER content detection (works for .txt and .csv files with XER content)
-    if (isXERContent(content)) {
-      console.log('✅ Detected as XER by content analysis');
-      return 'xer';
-    }
-    
-    // Existing project CSV detection
-    if (extension === 'csv') {
-      const lines = content.split('\n').slice(0, 5);
-      const headers = lines[0].toLowerCase();
-      console.log('CSV headers:', headers.substring(0, 100));
-      
-      if (headers.includes('wbs_code') && headers.includes('parent_wbs_code')) {
-        console.log('✅ Detected as existing project CSV');
-        return 'existing_project';
-      } else if (headers.includes('equipment') || headers.includes('description')) {
-        console.log('✅ Detected as equipment list CSV');
-        return 'equipment_list';
-      }
+    if (headers.includes('wbs_code') && headers.includes('parent_wbs_code')) {
+      console.log('✅ Detected as existing project CSV');
+      return 'existing_project';
+    } else if (headers.includes('equipment') || headers.includes('description')) {
+      console.log('✅ Detected as equipment list CSV');
+      return 'equipment_list';
     }
   }
   
-  console.log('❓ Unknown file type');
+  console.log('❓ Unknown file type - no conditions matched');
   return 'unknown';
 };
 
