@@ -456,8 +456,9 @@ const MissingEquipment = () => {
               </p>
               
               <FileUpload
-                onFileUpload={handleXERFileUpload}
-                accept=".xer,.txt"
+                uploadType="xer_file"                    // ← ADD THIS
+                onFileProcessed={handleXERFileUpload}    // ← CHANGE: onFileUpload → onFileProcessed
+                accept=".xer,.txt"                       // ← ALREADY CORRECT
                 maxSizeMB={50}
                 title="Upload XER File"
                 description="Select XER text file exported from Primavera P6 (both .xer and .txt formats accepted)"
@@ -533,15 +534,16 @@ const MissingEquipment = () => {
                 The system will automatically identify new equipment and assign appropriate WBS codes.
               </p>
               
-              <FileUpload
-                onFileUpload={handleEquipmentFileUpload}
-                acceptedTypes=".csv,.xlsx,.xls"
-                maxSizeMB={10}
-                title="Upload Equipment List"
-                description="Select CSV or Excel file with equipment data"
-                isLoading={processing.stage && processing.message && !processing.message.includes('XER')}
-                loadingText={processing.message || 'Processing...'}
-              />
+                <FileUpload
+                  uploadType="equipment_list"             // ← ADD THIS
+                  onFileProcessed={handleEquipmentFileUpload}  // ← CHANGE: onFileUpload → onFileProcessed
+                  accept=".csv,.xlsx,.xls"                // ← CHANGE: acceptedTypes → accept
+                  maxSizeMB={10}
+                  title="Upload Equipment List"
+                  description="Select CSV or Excel file with equipment data"
+                  isLoading={processing.stage && processing.message && !processing.message.includes('XER')}
+                  loadingText={processing.message || 'Processing...'}
+                />
             </div>
 
             <div className="flex space-x-4">
