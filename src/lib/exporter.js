@@ -509,26 +509,124 @@ export const exportComparisonToCSV = (comparisonResult, options = {}) => {
 };
 
 export const getExportStatistics = (data, options = {}) => {
-  console.log('CALCULATING EXPORT STATISTICS');
+  console.log('CALCULATING EXPORT STATISTICS - BACKWARD COMPATIBLE');
+  console.log(`Input data length: ${data?.length || 0}`);
   
-  const stats = {
-    total_items: data.length,
-    all_y_equipment_items: data.filter(item => item.is_equipment && (item.commissioning_status === 'Y' || item.commissioning_status === '')).length,
-    tbc_items: data.filter(item => item.is_equipment && item.commissioning_status === 'TBC').length,
-    structural_items: data.filter(item => !item.is_equipment).length,
-    unrecognized_items: data.filter(item => item.is_equipment && item.category === '99').length,
-    max_level: Math.max(...data.map(item => item.level || 0)),
-    levels: {
-      level1: data.filter(item => item.level === 1).length,
-      level2: data.filter(item => item.level === 2).length,
-      level3: data.filter(item => item.level === 3).length,
-      level4: data.filter(item => item.level === 4).length,
-      level5: data.filter(item => item.level === 5).length
-    }
-  };
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    console.log('❌ No data provided or data is not an array');
+    return {
+      total_items: 0,
+      all_y_equipment_items: 0,
+      tbc_items: 0,
+      structural_items: 0,
+      unrecognized_items: 0,
+      max_level: 0,
+      levels: { level1: 0, level2: 0, level3: 0, level4: 0, level5: 0 }
+    };
+  }
+
+  // Check if we have rich format (Start New Project) or minimal format (Missing Equipment)
+  const hasRichFormat = data.some(item => 
+    item.hasOwnProperty('is_equipment') && 
+    item.hasOwnProperty('level') && 
+    item.hasOwnProperty('commissioning_yn')
+  );
   
-  console.log('Export Statistics:', stats);
-  return stats;
+  console.log(`Data format detected: ${hasRichFormat ? 'RICH (Start New Project)' : 'MINIMAL (XER + Missing Equipment)'}`);
+
+  if (hasRichFormat) {
+    // ✅ ORIGINAL LOGIC: Use rich properties for Start New Project
+    console.log('Using original rich property logic...');
+    
+    const stats = {
+      total_items: data.length,
+      all_y_equipment_items: data.filter(item => item.is_equipment && (item.commissioning_yn === 'Y' || item.commissioning_yn === '')).length,
+      tbc_items: data.filter(item => item.is_equipment && item.commissioning_yn === 'TBC').length,
+      structural_items: data.filter(item => !item.is_equipment).length,
+      unrecognized_items: data.filter(item => item.is_equipment && item.category === '99').length,
+      max_level: Math.max(...data.map(item => item.level || 0)),
+      levels: {
+        level1: data.filter(item => item.level === 1).length,
+        level2: data.filter(item => item.level === 2).length,
+        level3: data.filter(item => item.level === 3).length,
+        level4: data.filter(item => item.level === 4).length,
+        level5: data.filter(item => item.level === 5).length
+      }
+    };
+    
+    console.log('RICH FORMAT Export Statistics:', stats);
+    return stats;
+    
+  } else {
+    // 🔄 FALLBACK LOGIC: Use pattern analysis for Missing Equipment
+    console.log('Using pattern analysis fallback logic...');
+    
+    // Helper function to identify equipment vs structural items from WBS data
+    const isEquipmentItem = (item) => {
+      // Equipment items have specific patterns in their wbs_name
+      const name = item.wbs_name || '';
+      
+      // Equipment codes start with +, -, or contain specific patterns
+      const equipmentPatterns = [
+        /^\+[A-Z0-9]+\s*\|/,    // +UH201 | Description
+        /^-[A-Z0-9]+\s*\|/,     // -F202 | Description  
+        /^[A-Z0-9]+-[0-9]+\s*\|/, // T01-001 | Description
+        /^[0-9]+\s*\|/          // Direct equipment numbers
+      ];
+      
+      return equipmentPatterns.some(pattern => pattern.test(name));
+    };
+
+    // Helper function to get commissioning status from WBS name
+    const getCommissioningStatus = (item) => {
+      const name = item.wbs_name || '';
+      if (name.toLowerCase().includes('tbc') || name.toLowerCase().includes('to be confirmed')) {
+        return 'TBC';
+      }
+      return isEquipmentItem(item) ? 'Y' : 'N';
+    };
+
+    // Helper function to get level from WBS code
+    const getLevel = (item) => {
+      const code = item.wbs_code || '';
+      return code.split('.').length;
+    };
+
+    // Helper function to identify category 99 (unrecognized) items
+    const isUnrecognizedItem = (item) => {
+      const name = item.wbs_name || '';
+      return name.includes('99 |') || name.toLowerCase().includes('unrecognized');
+    };
+
+    // Calculate statistics using pattern analysis
+    const equipmentItems = data.filter(isEquipmentItem);
+    const structuralItems = data.filter(item => !isEquipmentItem(item));
+    
+    const stats = {
+      total_items: data.length,
+      all_y_equipment_items: equipmentItems.filter(item => {
+        const status = getCommissioningStatus(item);
+        return status === 'Y' || status === '';
+      }).length,
+      tbc_items: data.filter(item => getCommissioningStatus(item) === 'TBC').length,
+      structural_items: structuralItems.length,
+      unrecognized_items: data.filter(isUnrecognizedItem).length,
+      max_level: data.length > 0 ? Math.max(...data.map(getLevel)) : 0,
+      levels: {
+        level1: data.filter(item => getLevel(item) === 1).length,
+        level2: data.filter(item => getLevel(item) === 2).length,
+        level3: data.filter(item => getLevel(item) === 3).length,
+        level4: data.filter(item => getLevel(item) === 4).length,
+        level5: data.filter(item => getLevel(item) === 5).length
+      }
+    };
+    
+    console.log('PATTERN ANALYSIS Export Statistics:', stats);
+    console.log(`Sample equipment items:`, equipmentItems.slice(0, 3).map(item => item.wbs_name));
+    console.log(`Sample structural items:`, structuralItems.slice(0, 3).map(item => item.wbs_name));
+    
+    return stats;
+  }
 };
 
 // Export validation utilities
