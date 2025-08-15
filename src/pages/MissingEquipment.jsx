@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import useProjectStore from '../store/projectStore';
 import FileUpload from '../components/FileUpload';
+import P6PasteInput from '../components/P6PasteInput';
 import WBSVisualization from '../components/WBSVisualization';
 import ExportButton from '../components/ExportButton';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { parseFile } from '../lib/fileParser';
 import { categorizeEquipment } from '../lib/equipmentProcessor';
 import { generateWBSStructure } from '../lib/wbsGenerator';
-import { extractEquipmentCodesFromWBS } from '../lib/xerParser';
 
 const MissingEquipment = () => {
   console.log('=== MISSING EQUIPMENT PAGE LOADED ===');
   
-  // Separate state from Start New Project to avoid interference
+  // Store state
   const {
     // Missing Equipment specific state
     missingEquipment: {
@@ -20,9 +20,9 @@ const MissingEquipment = () => {
       combinedWBS,
       exportData
     },
-    // Upload states
+    // Upload states - Updated for P6 paste
     uploads: {
-      xer_file,
+      p6_paste,
       equipment_list
     },
     // UI state
@@ -32,6 +32,8 @@ const MissingEquipment = () => {
     setMissingEquipmentCombinedWBS,
     setMissingEquipmentExportData,
     resetMissingEquipment,
+    // P6 paste actions
+    processP6Paste,
     // Generic actions
     setProcessingStage,
     setError,
@@ -57,101 +59,46 @@ const MissingEquipment = () => {
     setDebugInfo(prev => prev + '\n' + `[${new Date().toLocaleTimeString()}] ${message}`);
   };
 
-    // Step 1: Handle XER file upload and parsing
-   const handleXERFileUpload = async (result) => {  // ← Parameter name matches what's being passed
-    const file = result.file;  // ← Clean, explicit extraction
-    console.log('🚨 UPLOAD FUNCTION CALLED!', file); // 
+  // Step 1: Handle P6 paste data processing
+  const handleP6DataPasted = async (pasteContent) => {
     try {
-      console.log('=== STARTING XER FILE UPLOAD ===');
-      addDebugInfo(`Starting XER file upload: ${file.name} (${file.size} bytes)`);
+      console.log('=== STARTING P6 PASTE PROCESSING ===');
+      addDebugInfo(`Starting P6 paste processing: ${pasteContent.length} characters`);
       
       clearMessages();
-      setProcessingStage('parsing', 10, 'Parsing XER file...');
+      setProcessingStage('parsing', 10, 'Parsing P6 WBS data...');
 
-      // Set file upload state
-      setFileUpload('xer_file', {
-        file: file,
-        status: 'uploading',
-        error: null
+      console.log('Processing P6 paste data...');
+      const parseResult = await processP6Paste(pasteContent);
+
+      console.log('P6 parsing successful:', {
+        dataLength: parseResult.dataLength,
+        projectName: parseResult.projectInfo?.projectName,
+        equipmentCodes: existingProject.equipmentCodes?.length || 0
       });
 
-      addDebugInfo('Calling parseFile() for XER processing...');
-      console.log('Calling parseFile with XER file:', {
-        name: file.name,
-        size: file.size,
-        type: file.type
-      });
-
-      const parseResult = await parseFile(file);
-      
-      console.log('=== PARSE RESULT RECEIVED ===');
-      console.log('Parse result:', parseResult);
-      addDebugInfo(`Parse result type: ${parseResult?.type}, hasData: ${parseResult?.hasData}`);
-
-      if (parseResult.type !== 'xer') {
-        throw new Error(`Invalid file type. Expected XER, got ${parseResult.type}. Please upload an XER text file exported from P6.`);
-      }
-
-      if (!parseResult.hasData || parseResult.data.length === 0) {
-        throw new Error('No WBS data found in XER file. Please check the file format.');
-      }
-
-      console.log('=== XER PARSING SUCCESSFUL ===');
-      console.log('XER parsing successful:', {
-        totalWBSItems: parseResult.dataLength,
-        projectInfo: parseResult.projectInfo,
-        sampleData: parseResult.data.slice(0, 3)
-      });
-
-      addDebugInfo(`XER parsing successful! Found ${parseResult.dataLength} WBS items`);
+      addDebugInfo(`P6 parsing successful! Found ${parseResult.dataLength} WBS items`);
       addDebugInfo(`Project: ${parseResult.projectInfo?.projectName || 'Unknown'}`);
+      addDebugInfo(`Equipment codes extracted: ${existingProject.equipmentCodes?.length || 0}`);
 
-      // Extract equipment codes for comparison
-      const equipmentCodes = extractEquipmentCodesFromWBS(parseResult.data);
-      addDebugInfo(`Extracted ${equipmentCodes.length} equipment codes from WBS`);
-
-      // Set the existing project data
-      const projectData = {
-        wbsStructure: parseResult.data,
-        projectInfo: parseResult.projectInfo || { projectName: 'Unknown Project' },
-        totalItems: parseResult.dataLength,
-        equipmentCodes: equipmentCodes
-      };
-
-      console.log('Setting existing project data:', projectData);
-      setMissingEquipmentExistingProject(projectData);
-
-      // Update file upload state
-      setFileUpload('xer_file', {
-        file: file,
-        status: 'success',
-        error: null,
-        data: parseResult.data
-      });
-
-      setProcessingStage('complete', 100, 'XER file processed successfully!');
-      setSuccess(`XER file processed successfully! Found ${parseResult.dataLength} WBS items.`);
+      setProcessingStage('complete', 100, 'P6 data processed successfully!');
+      setSuccess(`P6 data processed successfully! Found ${parseResult.dataLength} WBS items.`);
       
-      addDebugInfo('XER file processing completed - ready for next step');
+      addDebugInfo('P6 data processing completed - ready for next step');
       
     } catch (error) {
-      console.error('=== XER PARSING FAILED ===');
-      console.error('XER parsing error:', error);
-      addDebugInfo(`XER parsing failed: ${error.message}`);
+      console.error('=== P6 PARSING FAILED ===');
+      console.error('P6 parsing error:', error);
+      addDebugInfo(`P6 parsing failed: ${error.message}`);
 
-      setError(`XER parsing failed: ${error.message}`);
-      setFileUpload('xer_file', {
-        file: file,
-        status: 'error',
-        error: error.message
-      });
+      setError(`P6 parsing failed: ${error.message}`);
       setProcessingStage('error', 0, error.message);
     }
   };
 
   // Step 2: Handle equipment file upload and processing
-const handleEquipmentFileUpload = async (result) => {     // ← Change parameter to 'result'
-   const file = result.file;  // ← Now this works correctly  
+  const handleEquipmentFileUpload = async (result) => {
+    const file = result.file;
     try {
       console.log('=== STARTING EQUIPMENT FILE UPLOAD ===');
       addDebugInfo(`Starting equipment file upload: ${file.name} (${file.size} bytes)`);
@@ -320,18 +267,18 @@ const handleEquipmentFileUpload = async (result) => {     // ← Change paramete
   };
 
   // Handle step progression
-  const handleConfirmXERParsing = () => {
-    console.log('Confirming XER parsing, checking conditions...');
-    console.log('XER file status:', xer_file.status);
+  const handleConfirmP6Parsing = () => {
+    console.log('Confirming P6 parsing, checking conditions...');
+    console.log('P6 paste status:', p6_paste.status);
     console.log('Existing project WBS count:', existingProject.wbsStructure?.length || 0);
     
-    if (xer_file.status === 'success' && existingProject.wbsStructure && existingProject.wbsStructure.length > 0) {
-      addDebugInfo('XER parsing confirmed - moving to equipment upload step');
+    if (p6_paste.status === 'success' && existingProject.wbsStructure && existingProject.wbsStructure.length > 0) {
+      addDebugInfo('P6 parsing confirmed - moving to equipment upload step');
       setCurrentStep(2);
       clearMessages();
     } else {
-      addDebugInfo('Cannot proceed - XER parsing not successful or no WBS data');
-      setError('Cannot proceed: XER file not properly processed or no WBS data found.');
+      addDebugInfo('Cannot proceed - P6 parsing not successful or no WBS data');
+      setError('Cannot proceed: P6 data not properly processed or no WBS data found.');
     }
   };
 
@@ -371,7 +318,7 @@ const handleEquipmentFileUpload = async (result) => {     // ← Change paramete
               }`}>
                 1
               </div>
-              <span>Upload XER File</span>
+              <span>Paste P6 WBS Data</span>
             </div>
             <div className="h-px bg-gray-300 flex-1"></div>
             <div className={`flex items-center ${currentStep >= 2 ? 'text-blue-600' : 'text-gray-400'}`}>
@@ -380,7 +327,7 @@ const handleEquipmentFileUpload = async (result) => {     // ← Change paramete
               }`}>
                 2
               </div>
-              <span>Upload Equipment</span>
+              <span>Upload Equipment List</span>
             </div>
             <div className="h-px bg-gray-300 flex-1"></div>
             <div className={`flex items-center ${currentStep >= 3 ? 'text-blue-600' : 'text-gray-400'}`}>
@@ -394,133 +341,63 @@ const handleEquipmentFileUpload = async (result) => {     // ← Change paramete
           </div>
         </div>
 
-        {/* Error Display */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
-            <div className="flex">
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Error</h3>
-                <p className="mt-1 text-sm text-red-700">{error}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Success Display */}
-        {success && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-md">
-            <div className="flex">
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-green-800">Success</h3>
-                <p className="mt-1 text-sm text-green-700">{success}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Processing Status */}
-        {processing.stage && processing.stage !== 'complete' && processing.stage !== 'error' && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
-            <div className="flex items-center">
-              <LoadingSpinner />
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-blue-800">Processing...</h3>
-                <p className="mt-1 text-sm text-blue-700">{processing.message}</p>
-                <div className="mt-2 w-full bg-blue-200 rounded-full h-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                    style={{ width: `${processing.progress}%` }}
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Debug Information */}
-        {debugInfo && (
-          <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-md">
-            <h3 className="text-sm font-medium text-gray-800 mb-2">Debug Information</h3>
-            <pre className="text-xs text-gray-600 whitespace-pre-wrap max-h-40 overflow-y-auto">
-              {debugInfo}
-            </pre>
-          </div>
-        )}
-
-        {/* Step 1: XER File Upload */}
+        {/* Step 1: P6 WBS Data Paste */}
         {currentStep === 1 && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold mb-4">Step 1: Upload Existing Project (XER File)</h2>
-              <p className="text-gray-600 mb-4">
-                Upload the XER text file exported from your P6 project to understand the existing WBS structure.
-                Accepted formats: .xer and .txt files.
-              </p>
-              
-              <FileUpload
-                uploadType="xer_file"                    // ← ADD THIS
-                onFileProcessed={handleXERFileUpload}    // ← CHANGE: onFileUpload → onFileProcessed
-                accept=".xer,.txt"                       // ← ALREADY CORRECT
-                maxSizeMB={50}
-                title="Upload XER File"
-                description="Select XER text file exported from Primavera P6 (both .xer and .txt formats accepted)"
-                isLoading={processing.stage === 'parsing' && processing.message.includes('XER')}
-                loadingText="Parsing XER file..."
-              />
-            </div>
+          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Step 1: Paste P6 WBS Data</h2>
+            
+            <P6PasteInput
+              onDataPasted={handleP6DataPasted}
+              disabled={processing.stage === 'parsing'}
+              title="Paste P6 WBS Data"
+              description="Copy WBS Code and WBS Name columns from P6 and paste them here"
+            />
 
-            {/* XER Parse Results */}
-            {xer_file.status === 'success' && existingProject.wbsStructure && existingProject.wbsStructure.length > 0 && (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-semibold mb-4">Existing Project Structure</h3>
-                <div className="mb-4">
-                  <p className="text-sm text-gray-600">
-                    <strong>Project:</strong> {existingProject.projectInfo?.projectName || 'Unknown Project'}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    <strong>Total WBS Items:</strong> {existingProject.totalItems || 0}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    <strong>Existing Equipment:</strong> {existingProject.equipmentCodes?.length || 0} items
-                  </p>
+            {/* P6 Data Status */}
+            {p6_paste.status === 'success' && existingProject.wbsStructure?.length > 0 && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h3 className="text-lg font-medium text-green-800 mb-2">
+                  ✅ P6 Data Processed Successfully
+                </h3>
+                <div className="text-sm text-green-700">
+                  <p><strong>Project:</strong> {existingProject.projectInfo?.projectName || 'Unknown'}</p>
+                  <p><strong>Total WBS Items:</strong> {existingProject.wbsStructure.length}</p>
+                  <p><strong>Equipment Items:</strong> {existingProject.equipmentCodes?.length || 0}</p>
                 </div>
-
-                <div className="mb-4 max-h-96 overflow-y-auto border rounded">
-                  <WBSVisualization 
-                    wbsData={existingProject.wbsStructure}
-                    title="Existing Project Structure"
-                    showNewBadges={false}
-                  />
+                
+                {/* Preview of WBS structure */}
+                <div className="mt-4">
+                  <h4 className="font-medium mb-2">WBS Structure Preview:</h4>
+                  <div className="bg-white p-3 rounded border max-h-40 overflow-y-auto">
+                    <WBSVisualization 
+                      wbsData={existingProject.wbsStructure.slice(0, 20)} 
+                      maxHeight="150px"
+                      showControls={false}
+                    />
+                    {existingProject.wbsStructure.length > 20 && (
+                      <div className="text-xs text-gray-500 mt-2">
+                        ... and {existingProject.wbsStructure.length - 20} more items
+                      </div>
+                    )}
+                  </div>
                 </div>
-
-                <div className="flex space-x-4">
-                  <button
-                    onClick={handleConfirmXERParsing}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium"
-                  >
-                    Confirm & Continue
-                  </button>
-                  <button
-                    onClick={handleReset}
-                    className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-6 py-2 rounded-md font-medium"
-                  >
-                    Reset
-                  </button>
-                </div>
+                
+                <button
+                  onClick={handleConfirmP6Parsing}
+                  className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                >
+                  Continue to Equipment Upload
+                </button>
               </div>
             )}
 
-            {/* XER Error State */}
-            {xer_file.status === 'error' && (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-semibold mb-4 text-red-600">XER Processing Failed</h3>
-                <p className="text-red-600 mb-4">{xer_file.error}</p>
-                <button
-                  onClick={handleReset}
-                  className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-md font-medium"
-                >
-                  Try Again
-                </button>
+            {/* Error Display */}
+            {p6_paste.status === 'error' && (
+              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <h3 className="text-lg font-medium text-red-800 mb-2">
+                  ❌ P6 Parsing Error
+                </h3>
+                <p className="text-sm text-red-700">{p6_paste.error}</p>
               </div>
             )}
           </div>
@@ -528,102 +405,140 @@ const handleEquipmentFileUpload = async (result) => {     // ← Change paramete
 
         {/* Step 2: Equipment File Upload */}
         {currentStep === 2 && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold mb-4">Step 2: Upload Updated Equipment List</h2>
-              <p className="text-gray-600 mb-4">
-                Upload your updated equipment list that includes both existing and new equipment items.
-                The system will automatically identify new equipment and assign appropriate WBS codes.
-              </p>
-              
-                <FileUpload
-                  uploadType="equipment_list"             // ← ADD THIS
-                  onFileProcessed={handleEquipmentFileUpload}  // ← CHANGE: onFileUpload → onFileProcessed
-                  accept=".csv,.xlsx,.xls"                // ← CHANGE: acceptedTypes → accept
-                  maxSizeMB={10}
-                  title="Upload Equipment List"
-                  description="Select CSV or Excel file with equipment data"
-                  isLoading={processing.stage && processing.message && !processing.message.includes('XER')}
-                  loadingText={processing.message || 'Processing...'}
-                />
-            </div>
-
-            <div className="flex space-x-4">
+          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Step 2: Upload Updated Equipment List</h2>
               <button
                 onClick={() => handleBackToStep(1)}
-                className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-6 py-2 rounded-md font-medium"
+                className="text-blue-600 hover:text-blue-800 text-sm"
               >
-                Back to XER Upload
+                ← Back to P6 Data
               </button>
+            </div>
+
+            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-700">
+                <strong>Current Project:</strong> {existingProject.projectInfo?.projectName || 'Unknown'}<br/>
+                <strong>Existing Equipment:</strong> {existingProject.equipmentCodes?.length || 0} items
+              </p>
+            </div>
+
+            <FileUpload
+              uploadType="equipment_list"
+              accept=".csv,.xlsx,.xls"
+              title="Upload Updated Equipment List"
+              description="Upload CSV or Excel file containing both existing and new equipment"
+              onFileProcessed={handleEquipmentFileUpload}
+              disabled={processing.stage === 'parsing'}
+            />
+
+            {/* Equipment File Status */}
+            {equipment_list.status === 'success' && equipment_list.data?.length > 0 && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h3 className="text-lg font-medium text-green-800 mb-2">
+                  ✅ Equipment List Processed
+                </h3>
+                <p className="text-sm text-green-700">
+                  Found {equipment_list.data.length} equipment items in the updated list.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 3: Review and Export */}
+        {currentStep === 3 && (
+          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Step 3: Review Changes & Export</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleBackToStep(2)}
+                  className="text-blue-600 hover:text-blue-800 text-sm"
+                >
+                  ← Back to Equipment
+                </button>
+                <button
+                  onClick={handleReset}
+                  className="text-gray-600 hover:text-gray-800 text-sm"
+                >
+                  🔄 Start Over
+                </button>
+              </div>
+            </div>
+
+            {/* Combined WBS Visualization */}
+            {combinedWBS?.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-medium mb-3">Combined Project Structure</h3>
+                <div className="border rounded-lg p-4 bg-gray-50">
+                  <WBSVisualization 
+                    wbsData={combinedWBS} 
+                    showControls={true}
+                    highlightNew={true}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Export Section */}
+            {exportData?.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="text-lg font-medium text-blue-800 mb-3">
+                  📤 Export New Equipment
+                </h3>
+                <p className="text-sm text-blue-700 mb-4">
+                  Ready to export {exportData.length} new equipment items with assigned WBS codes.
+                  This CSV can be imported directly into P6.
+                </p>
+                
+                <ExportButton
+                  data={exportData}
+                  filename="new_equipment_wbs"
+                  includeNewOnly={true}
+                  variant="primary"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Processing Indicator */}
+        {processing.stage && processing.stage !== 'complete' && processing.stage !== 'error' && (
+          <div className="fixed bottom-4 right-4 bg-white shadow-lg rounded-lg p-4 border">
+            <div className="flex items-center space-x-3">
+              <LoadingSpinner size="sm" />
+              <div>
+                <div className="text-sm font-medium">{processing.message}</div>
+                <div className="text-xs text-gray-500">{processing.progress}% complete</div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Step 3: Review & Export */}
-        {currentStep === 3 && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold mb-4">Step 3: Review Combined Project Structure</h2>
-              <p className="text-gray-600 mb-4">
-                Review the complete project structure with new equipment highlighted. 
-                Export only the new items for import into P6.
-              </p>
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <h3 className="text-lg font-medium text-red-800 mb-2">Error</h3>
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
 
-              {/* Summary Statistics */}
-              {combinedWBS && exportData && (
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                  <div className="bg-blue-50 p-4 rounded-md">
-                    <p className="text-sm text-gray-600">Total WBS Items</p>
-                    <p className="text-2xl font-semibold text-blue-600">{combinedWBS.length}</p>
-                  </div>
-                  <div className="bg-green-50 p-4 rounded-md">
-                    <p className="text-sm text-gray-600">New Equipment Items</p>
-                    <p className="text-2xl font-semibold text-green-600">{exportData.length}</p>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-md">
-                    <p className="text-sm text-gray-600">Existing Items</p>
-                    <p className="text-2xl font-semibold text-gray-600">{combinedWBS.length - exportData.length}</p>
-                  </div>
-                </div>
-              )}
+        {/* Success Display */}
+        {success && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <h3 className="text-lg font-medium text-green-800 mb-2">Success</h3>
+            <p className="text-sm text-green-700">{success}</p>
+          </div>
+        )}
 
-              {/* Combined WBS Visualization */}
-              {combinedWBS && combinedWBS.length > 0 && (
-                <div className="mb-6 max-h-96 overflow-y-auto border rounded">
-                  <WBSVisualization 
-                    wbsData={combinedWBS}
-                    title="Combined Project Structure (Existing + New)"
-                    showNewBadges={true}
-                  />
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex space-x-4">
-                {exportData && exportData.length > 0 && (
-                  <ExportButton
-                    wbsData={exportData}
-                    filename={`${existingProject.projectInfo?.projectName || 'Project'}_New_Equipment.csv`}
-                    includeNewOnly={true}
-                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-md font-medium"
-                  >
-                    Export New Equipment Only ({exportData.length} items)
-                  </ExportButton>
-                )}
-                <button
-                  onClick={() => handleBackToStep(2)}
-                  className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-6 py-2 rounded-md font-medium"
-                >
-                  Back to Equipment Upload
-                </button>
-                <button
-                  onClick={handleReset}
-                  className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-6 py-2 rounded-md font-medium"
-                >
-                  Start Over
-                </button>
-              </div>
-            </div>
+        {/* Debug Info (development only) */}
+        {process.env.NODE_ENV === 'development' && debugInfo && (
+          <div className="mt-8 p-4 bg-gray-100 border rounded-lg">
+            <h3 className="text-sm font-medium mb-2">Debug Information</h3>
+            <pre className="text-xs text-gray-600 whitespace-pre-wrap max-h-40 overflow-y-auto">
+              {debugInfo}
+            </pre>
           </div>
         )}
       </div>
