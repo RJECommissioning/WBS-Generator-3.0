@@ -49,9 +49,9 @@ const useProjectStore = create((set, get) => ({
       data: [],
       validation: null
     },
-    xer_file: {
-      file: null,
-      status: 'idle', 
+    p6_paste: {
+      content: '',
+      status: 'idle',
       error: null,
       data: [],
       validation: null
@@ -140,57 +140,63 @@ const useProjectStore = create((set, get) => ({
     }
   })),
 
-uploadFile: async (uploadType, file) => {
-  const { setFileUpload, setError, setLoading } = get();
-  
-  try {
-    setLoading(true);
-    setFileUpload(uploadType, { 
-      file, 
-      status: 'uploading', 
-      error: null 
-    });
-
-    // Validate file
-    if (!file || typeof file.size !== 'number') {
-      throw new Error('Invalid file provided');
-    }
-
-    if (!fileHelpers.isValidFile(file)) {
-      throw new Error('Invalid file type. Please upload a CSV file.');
-    }
-
-    // Read file content
-    const content = await fileHelpers.readFileAsText(file);
+  uploadFile: async (uploadType, file) => {
+    const { setFileUpload, setError, setLoading } = get();
     
-    // Simple data structure for now
-    const parsedData = { raw: content, type: 'csv' };
+    try {
+      setLoading(true);
+      setFileUpload(uploadType, { 
+        file, 
+        status: 'uploading', 
+        error: null 
+      });
 
-    setFileUpload(uploadType, {
-      status: 'success',
-      data: parsedData,
-      error: null
-    });
+      // Validate file
+      if (!file || typeof file.size !== 'number') {
+        throw new Error('Invalid file provided');
+      }
 
-    setLoading(false);
-    return parsedData;
+      if (!fileHelpers.isValidFile(file)) {
+        throw new Error('Invalid file type. Please upload a CSV file.');
+      }
 
-  } catch (error) {
-    setFileUpload(uploadType, {
-      status: 'error',
-      error: error.message,
-      data: []
-    });
-    setError(`File upload failed: ${error.message}`);
-    setLoading(false);
-    throw error;
-  }
-},
+      // Read file content
+      const content = await fileHelpers.readFileAsText(file);
+      
+      // Simple data structure for now
+      const parsedData = { raw: content, type: 'csv' };
+
+      setFileUpload(uploadType, {
+        status: 'success',
+        data: parsedData,
+        error: null
+      });
+
+      setLoading(false);
+      return parsedData;
+
+    } catch (error) {
+      setFileUpload(uploadType, {
+        status: 'error',
+        error: error.message,
+        data: []
+      });
+      setError(`File upload failed: ${error.message}`);
+      setLoading(false);
+      throw error;
+    }
+  },
 
   clearFileUpload: (uploadType) => set((state) => ({
     uploads: {
       ...state.uploads,
-      [uploadType]: {
+      [uploadType]: uploadType === 'p6_paste' ? {
+        content: '',
+        status: 'idle',
+        error: null,
+        data: [],
+        validation: null
+      } : {
         file: null,
         status: 'idle',
         error: null,
@@ -199,6 +205,62 @@ uploadFile: async (uploadType, file) => {
       }
     }
   })),
+
+  // P6 Paste Actions
+  setP6PasteData: (content, status = 'success', error = null, data = [], validation = null) => set((state) => ({
+    uploads: {
+      ...state.uploads,
+      p6_paste: {
+        content: content,
+        status: status,
+        error: error,
+        data: data,
+        validation: validation
+      }
+    }
+  })),
+
+  processP6Paste: async (pasteContent) => {
+    const { setP6PasteData, setError, setSuccess, setMissingEquipmentExistingProject } = get();
+    
+    try {
+      console.log('Processing P6 paste data...');
+      setP6PasteData(pasteContent, 'processing');
+      
+      // Import P6 parser
+      const { parseP6PasteData, extractEquipmentCodesFromP6WBS } = await import('../lib/p6Parser');
+      
+      // Parse the P6 data
+      const parseResult = await parseP6PasteData(pasteContent);
+      
+      if (!parseResult.hasData) {
+        throw new Error('No valid WBS data found in paste content');
+      }
+      
+      // Extract equipment codes for comparison
+      const equipmentCodes = extractEquipmentCodesFromP6WBS(parseResult.data);
+      
+      // Update missing equipment state
+      setMissingEquipmentExistingProject({
+        wbsStructure: parseResult.data,
+        projectInfo: parseResult.projectInfo,
+        equipmentCodes: equipmentCodes
+      });
+      
+      // Update P6 paste state
+      setP6PasteData(pasteContent, 'success', null, parseResult.data, parseResult.validation);
+      
+      setSuccess(`P6 data processed successfully! Found ${parseResult.dataLength} WBS items.`);
+      
+      return parseResult;
+      
+    } catch (error) {
+      console.error('P6 paste processing failed:', error);
+      setP6PasteData(pasteContent, 'error', error.message);
+      setError(`P6 parsing failed: ${error.message}`);
+      throw error;
+    }
+  },
 
   // Project Actions
   initializeProject: (projectName) => set(() => ({
@@ -419,8 +481,8 @@ uploadFile: async (uploadType, file) => {
     // Also clear related uploads and comparison data
     uploads: {
       ...state.uploads,
-      xer_file: {
-        file: null,
+      p6_paste: {
+        content: '',
         status: 'idle',
         error: null,
         data: [],
@@ -579,8 +641,8 @@ uploadFile: async (uploadType, file) => {
         data: [],
         validation: null
       },
-      xer_file: {
-        file: null,
+      p6_paste: {
+        content: '',
         status: 'idle',
         error: null,
         data: [],
