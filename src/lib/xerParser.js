@@ -4,7 +4,7 @@
  * Purpose: Parse XER text files exported from Primavera P6 to extract
  * existing WBS structure for Missing Equipment functionality.
  * 
- * ENHANCED WITH: Detailed console logging at every step for debugging
+ * FIXED: Now supports both TAB and SPACE format for PROJWBS table detection
  */
 
 // Main XER parsing function with enhanced debugging
@@ -87,7 +87,7 @@ export const parseXERFile = (xerContent) => {
   });
 };
 
-// Enhanced validation with detailed logging
+// Enhanced validation with detailed logging - FIXED FOR BOTH TAB AND SPACE
 const validateXERFormat = (content) => {
   console.log('Validating XER format...');
   
@@ -103,16 +103,21 @@ const validateXERFormat = (content) => {
     throw new Error('Invalid XER content: File too small to be valid XER');
   }
 
-  // Check for PROJWBS table
-  const hasProjWBS = content.includes('%T PROJWBS');
-  console.log('Has PROJWBS table:', hasProjWBS);
+  // FIXED: Check for PROJWBS table with both TAB and SPACE format
+  const hasProjWBSTab = content.includes('%T\tPROJWBS');
+  const hasProjWBSSpace = content.includes('%T PROJWBS');
+  const hasProjWBS = hasProjWBSTab || hasProjWBSSpace;
+  
+  console.log('Has PROJWBS table (TAB format):', hasProjWBSTab);
+  console.log('Has PROJWBS table (SPACE format):', hasProjWBSSpace);
+  console.log('Has PROJWBS table (either format):', hasProjWBS);
   
   if (!hasProjWBS) {
     console.error('❌ Missing PROJWBS table');
     console.log('Looking for alternative table indicators...');
     
     // Log what tables ARE present
-    const tableMatches = content.match(/%T\s+\w+/g);
+    const tableMatches = content.match(/%T[\s\t]+\w+/g);
     if (tableMatches) {
       console.log('Available tables:', tableMatches.slice(0, 10));
     }
@@ -134,15 +139,17 @@ const validateXERFormat = (content) => {
   console.log('✅ XER format validation passed');
 };
 
-// Enhanced PROJWBS extraction with detailed logging
+// Enhanced PROJWBS extraction with detailed logging - FIXED FOR BOTH TAB AND SPACE
 const extractPROJWBSTable = (content) => {
   console.log('Extracting PROJWBS table...');
   
   const lines = content.split('\n').map(line => line.trim());
   console.log(`Total lines in file: ${lines.length}`);
   
-  // Find PROJWBS table start
-  const tableStartIndex = lines.findIndex(line => line === '%T PROJWBS');
+  // FIXED: Find PROJWBS table start - support both TAB and SPACE format
+  const tableStartIndex = lines.findIndex(line => 
+    line === '%T\tPROJWBS' || line === '%T PROJWBS'
+  );
   console.log('PROJWBS table start index:', tableStartIndex);
   
   if (tableStartIndex === -1) {
@@ -203,7 +210,7 @@ const extractPROJWBSTable = (content) => {
     const line = lines[currentIndex];
     
     // Stop at next table or end of file
-    if (line.startsWith('%T') && line !== '%T PROJWBS') {
+    if (line.startsWith('%T') && line !== '%T\tPROJWBS' && line !== '%T PROJWBS') {
       console.log(`Stopped at next table: ${line}`);
       break;
     }
@@ -237,6 +244,7 @@ const extractPROJWBSTable = (content) => {
     throw new Error('No PROJWBS data records found');
   }
 
+  console.log('✅ PROJWBS extraction successful');
   return {
     fields: fields,
     fieldMap: fieldMap,
@@ -244,7 +252,7 @@ const extractPROJWBSTable = (content) => {
   };
 };
 
-// Enhanced data line parsing with better error handling
+// Parse tab-separated data line with proper escaping
 const parseDataLine = (dataLine) => {
   const values = [];
   let currentValue = '';
@@ -276,14 +284,11 @@ const parseDataLine = (dataLine) => {
   return values;
 };
 
-// Enhanced WBS lookup table with detailed logging
+// Build lookup table for WBS ID to WBS code mapping
 const buildWBSLookupTable = (records, fieldMap) => {
   console.log('Building WBS lookup table...');
-  console.log(`Processing ${records.length} records`);
   
   const lookup = {};
-  let successCount = 0;
-  let errorCount = 0;
   
   records.forEach((record, index) => {
     try {
@@ -292,42 +297,25 @@ const buildWBSLookupTable = (records, fieldMap) => {
       
       if (wbsId && wbsShortName) {
         lookup[wbsId] = wbsShortName;
-        successCount++;
       } else {
-        errorCount++;
-        if (errorCount <= 3) { // Log first few errors
-          console.warn(`Record ${index}: Missing wbs_id (${wbsId}) or wbs_short_name (${wbsShortName})`);
+        if (index < 5) { // Only log first few
+          console.warn(`Record ${index}: Missing wbs_id or wbs_short_name`);
         }
       }
     } catch (error) {
-      errorCount++;
-      if (errorCount <= 3) { // Log first few errors
-        console.warn(`Error processing record ${index}:`, error.message);
-      }
+      console.warn(`Error processing record ${index}:`, error.message);
     }
   });
 
-  console.log(`Lookup table built:`);
-  console.log(`  Successful entries: ${successCount}`);
-  console.log(`  Failed entries: ${errorCount}`);
-  console.log(`  Total entries: ${Object.keys(lookup).length}`);
-  
-  // Show sample entries
-  const sampleEntries = Object.entries(lookup).slice(0, 5);
-  console.log('Sample lookup entries:', sampleEntries);
-  
+  console.log(`✅ Lookup table built with ${Object.keys(lookup).length} entries`);
   return lookup;
 };
 
-// Enhanced WBS structure conversion with detailed logging
+// Convert XER records to standard WBS structure
 const convertToWBSStructure = (records, fieldMap, wbsLookup) => {
   console.log('Converting to WBS structure...');
-  console.log(`Processing ${records.length} records with ${Object.keys(wbsLookup).length} lookup entries`);
   
   const wbsStructure = [];
-  let successCount = 0;
-  let skipCount = 0;
-  let orphanCount = 0;
   
   records.forEach((record, index) => {
     try {
@@ -338,85 +326,53 @@ const convertToWBSStructure = (records, fieldMap, wbsLookup) => {
 
       // Skip records with missing essential data
       if (!wbsShortName || !wbsName) {
-        skipCount++;
-        if (skipCount <= 3) { // Log first few skips
-          console.warn(`Skipping record ${index}: Missing wbs_short_name (${wbsShortName}) or wbs_name (${wbsName})`);
+        if (index < 5) { // Only log first few
+          console.warn(`Skipping record ${index}: Missing wbs_short_name or wbs_name`);
         }
         return;
       }
 
       // Clean the WBS name (remove quotes if present)
-      const cleanWbsName = wbsName.replace(/^["']|["']$/g, '').trim();
-      
-      // Find parent WBS code
-      let parentWbsCode = null;
-      if (parentWbsId && parentWbsId !== '' && parentWbsId !== wbsId) {
-        parentWbsCode = wbsLookup[parentWbsId] || null;
-        
-        if (parentWbsId && !parentWbsCode) {
-          orphanCount++;
-          if (orphanCount <= 3) { // Log first few orphans
-            console.warn(`Record ${index}: Parent WBS ID ${parentWbsId} not found in lookup`);
-          }
-        }
+      const cleanedWbsName = wbsName.replace(/^["']|["']$/g, '').trim();
+
+      // Determine parent WBS code
+      let parentWbsCode = '';
+      if (parentWbsId && wbsLookup[parentWbsId]) {
+        parentWbsCode = wbsLookup[parentWbsId];
       }
 
-      // Create WBS structure item
+      // Create WBS item
       const wbsItem = {
-        wbs_code: wbsShortName.trim(),
+        wbs_code: wbsShortName,
         parent_wbs_code: parentWbsCode,
-        wbs_name: cleanWbsName,
-        // Additional metadata for debugging
-        _original_wbs_id: wbsId,
-        _original_parent_id: parentWbsId,
-        _record_index: index
+        wbs_name: cleanedWbsName,
+        // Metadata for processing
+        _wbs_id: wbsId,
+        _parent_wbs_id: parentWbsId || '',
+        _level: wbsShortName.split('.').length
       };
 
       wbsStructure.push(wbsItem);
-      successCount++;
 
     } catch (error) {
       console.warn(`Error converting record ${index}:`, error.message);
     }
   });
 
-  console.log(`Conversion complete:`);
-  console.log(`  Successful conversions: ${successCount}`);
-  console.log(`  Skipped records: ${skipCount}`);
-  console.log(`  Orphaned records: ${orphanCount}`);
-  console.log(`  Final structure size: ${wbsStructure.length}`);
-  
-  // Show sample WBS items
-  if (wbsStructure.length > 0) {
-    console.log('Sample WBS items:');
-    wbsStructure.slice(0, 3).forEach((item, index) => {
-      console.log(`  ${index + 1}. ${item.wbs_code} | ${item.parent_wbs_code || 'ROOT'} | ${item.wbs_name}`);
-    });
-  }
-  
+  console.log(`✅ Converted ${wbsStructure.length} WBS items`);
+  console.log('Sample converted items:', wbsStructure.slice(0, 3).map(item => 
+    `${item.wbs_code} | ${item.wbs_name.substring(0, 30)}...`
+  ));
+
   return wbsStructure;
 };
 
-// Enhanced validation and sorting with detailed logging
+// Validate and sort WBS structure
 const validateAndSortWBS = (wbsStructure) => {
   console.log('Validating and sorting WBS structure...');
-  console.log(`Input: ${wbsStructure.length} WBS items`);
   
-  // Remove duplicates based on wbs_code
-  const seen = new Set();
-  const uniqueStructure = wbsStructure.filter(item => {
-    if (seen.has(item.wbs_code)) {
-      console.warn(`Removing duplicate WBS code: ${item.wbs_code}`);
-      return false;
-    }
-    seen.add(item.wbs_code);
-    return true;
-  });
-
-  console.log(`After duplicate removal: ${uniqueStructure.length} items (removed ${wbsStructure.length - uniqueStructure.length} duplicates)`);
-
-  // Sort hierarchically by WBS code
-  const sortedStructure = uniqueStructure.sort((a, b) => {
+  // Sort by WBS code hierarchy
+  const sortedStructure = wbsStructure.sort((a, b) => {
     const aParts = a.wbs_code.split('.').map(part => parseInt(part) || 0);
     const bParts = b.wbs_code.split('.').map(part => parseInt(part) || 0);
     
@@ -442,16 +398,13 @@ const validateAndSortWBS = (wbsStructure) => {
   // Final validation
   validateWBSHierarchy(cleanedStructure);
 
-  console.log(`Final sorted structure: ${cleanedStructure.length} items`);
-  console.log('Sample final WBS items:');
-  cleanedStructure.slice(0, 5).forEach((item, index) => {
-    console.log(`  ${index + 1}. ${item.wbs_code} | ${item.parent_wbs_code || 'ROOT'} | ${item.wbs_name.substring(0, 50)}...`);
-  });
+  console.log(`✅ Final sorted structure: ${cleanedStructure.length} items`);
+  console.log('Sample WBS items:', cleanedStructure.slice(0, 5));
 
   return cleanedStructure;
 };
 
-// Enhanced hierarchy validation with detailed logging
+// Validate WBS hierarchy for orphaned records
 const validateWBSHierarchy = (wbsStructure) => {
   console.log('Validating WBS hierarchy...');
   
@@ -466,8 +419,8 @@ const validateWBSHierarchy = (wbsStructure) => {
 
   if (orphanedItems.length > 0) {
     console.warn('Found orphaned WBS items:');
-    orphanedItems.slice(0, 5).forEach((item, index) => {
-      console.warn(`  ${index + 1}. ${item}`);
+    orphanedItems.slice(0, 10).forEach(item => {
+      console.warn(`  ${item}`);
     });
     console.warn(`Total orphaned items: ${orphanedItems.length}`);
   } else {
@@ -493,7 +446,7 @@ const extractProjectInfo = (content) => {
     const lines = content.split('\n');
     
     // Look for PROJECT table
-    const projectTableIndex = lines.findIndex(line => line.trim() === '%T PROJECT');
+    const projectTableIndex = lines.findIndex(line => line.trim() === '%T\tPROJECT' || line.trim() === '%T PROJECT');
     console.log('PROJECT table index:', projectTableIndex);
     
     if (projectTableIndex === -1) {
