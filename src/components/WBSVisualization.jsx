@@ -1,46 +1,44 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Box,
   Typography,
-  Collapse,
   IconButton,
-  Chip,
-  Paper,
-  Tooltip,
+  Collapse,
   TextField,
   InputAdornment,
-  Alert
+  Chip,
+  Tooltip,
+  Alert,
+  Paper,
+  Grid
 } from '@mui/material';
 import {
   ExpandMore,
   ChevronRight,
   Search,
-  FiberNew,
-  AccountTree,
-  Description,
-  Settings,
-  Warning
+  Warning,
+  CheckCircle,
+  Error as ErrorIcon,
+  Info,
+  FiberNew
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import useProjectStore from '../store/projectStore';
 import { BRAND_COLORS, WBS_LEVEL_COLORS } from '../constants';
-import { wbsHelpers, stringHelpers } from '../utils';
+import { wbsHelpers } from '../utils';
 
-// Styled components with brand colors
+// Styled components
 const TreeContainer = styled(Box)(({ theme }) => ({
-  width: '100%',
-  maxHeight: '70vh',
-  overflowY: 'auto',
-  border: `1px solid ${BRAND_COLORS.level2}`,
+  backgroundColor: BRAND_COLORS.surface,
   borderRadius: theme.spacing(1),
-  backgroundColor: BRAND_COLORS.white,
-  padding: theme.spacing(1)
+  padding: theme.spacing(2),
+  overflowY: 'auto',
+  border: `1px solid ${BRAND_COLORS.level3}30`
 }));
 
-const TreeNode = styled(Paper)(({ theme, level, isExpanded, isSelected, isNew }) => ({
-  margin: `${theme.spacing(0.5)} 0`,
-  marginLeft: theme.spacing(level * 3),
-  padding: theme.spacing(1, 2),
+const TreeNodeContainer = styled(Box)(({ theme, level, isNew, isSelected }) => ({
+  marginLeft: level > 1 ? theme.spacing((level - 1) * 2) : 0,
+  marginBottom: theme.spacing(0.5),
   backgroundColor: isNew 
     ? `${BRAND_COLORS.accent}15` 
     : WBS_LEVEL_COLORS[level] + '10',
@@ -75,6 +73,8 @@ const NewBadge = styled(Chip)(({ theme }) => ({
 }));
 
 const WBSVisualization = ({ 
+  wbsData = null,              // ← FIXED: Added wbsData prop
+  title = null,                // ← FIXED: Added title prop  
   showSearch = true,
   showNewBadges = true,
   expandAllByDefault = false,
@@ -95,21 +95,24 @@ const WBSVisualization = ({
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [expandedNodes, setExpandedNodes] = useState(new Set());
 
+  // FIXED: Use wbsData prop when provided, fall back to store data
+  const wbsStructureData = wbsData || project.wbs_structure || [];
+
   // Build tree data from WBS structure
   const treeData = useMemo(() => {
-    if (!project.wbs_structure || project.wbs_structure.length === 0) {
+    if (!wbsStructureData || wbsStructureData.length === 0) {  // ← FIXED: Use wbsStructureData
       return [];
     }
 
     try {
       // Build hierarchical tree
-      const hierarchicalTree = wbsHelpers.buildHierarchicalTree(project.wbs_structure);
+      const hierarchicalTree = wbsHelpers.buildHierarchicalTree(wbsStructureData);  // ← FIXED: Use wbsStructureData
       return hierarchicalTree;
     } catch (error) {
       console.error('Error building tree:', error);
       return [];
     }
-  }, [project.wbs_structure]);
+  }, [wbsStructureData]);  // ← FIXED: Dependency on wbsStructureData
 
   // Filter tree data based on search
   const filteredTreeData = useMemo(() => {
@@ -126,14 +129,15 @@ const WBSVisualization = ({
           node.wbs_code?.includes(searchTerm);
 
         const filteredChildren = node.children ? filterTree(node.children) : [];
-        
-        if (matchesSearch || filteredChildren.length > 0) {
+        const hasMatchingChildren = filteredChildren.length > 0;
+
+        if (matchesSearch || hasMatchingChildren) {
           acc.push({
             ...node,
             children: filteredChildren
           });
         }
-        
+
         return acc;
       }, []);
     };
@@ -141,201 +145,164 @@ const WBSVisualization = ({
     return filterTree(treeData);
   }, [treeData, searchTerm]);
 
-  // Initialize expanded nodes
+  // Tree statistics
+  const treeStats = useMemo(() => {
+    const flattenTree = (nodes) => {
+      let flat = [];
+      nodes.forEach(node => {
+        flat.push(node);
+        if (node.children) {
+          flat = flat.concat(flattenTree(node.children));
+        }
+      });
+      return flat;
+    };
+
+    const allNodes = flattenTree(treeData);
+    const newItems = showNewBadges ? allNodes.filter(node => node.isNew) : [];
+    
+    return {
+      totalItems: allNodes.length,
+      newItems: newItems.length,
+      equipmentItems: allNodes.filter(node => 
+        node.wbs_name?.includes('|') && 
+        !node.wbs_name?.includes('M |') && 
+        !node.wbs_name?.includes('P |') && 
+        !node.wbs_name?.includes('S1 |') &&
+        !node.wbs_name?.includes('S2 |') &&
+        !node.wbs_name?.includes('S3 |')
+      ).length,
+      levels: Math.max(...allNodes.map(node => node.level || 1))
+    };
+  }, [treeData, showNewBadges]);
+
+  // Initialize expansion state
   useEffect(() => {
     if (expandAllByDefault && treeData.length > 0) {
       const allNodeIds = new Set();
-      
       const collectNodeIds = (nodes) => {
         nodes.forEach(node => {
           allNodeIds.add(node.wbs_code);
-          if (node.children && node.children.length > 0) {
-            collectNodeIds(node.children);
-          }
+          if (node.children) collectNodeIds(node.children);
         });
       };
-      
       collectNodeIds(treeData);
       setExpandedNodes(allNodeIds);
     }
-  }, [treeData, expandAllByDefault]);
+  }, [expandAllByDefault, treeData]);
 
-  // Auto-expand nodes when searching
-  useEffect(() => {
-    if (searchTerm.trim() && filteredTreeData.length > 0) {
-      const nodesToExpand = new Set();
-      
-      const expandSearchResults = (nodes) => {
-        nodes.forEach(node => {
-          nodesToExpand.add(node.wbs_code);
-          if (node.children && node.children.length > 0) {
-            expandSearchResults(node.children);
-          }
-        });
-      };
-      
-      expandSearchResults(filteredTreeData);
-      setExpandedNodes(prev => new Set([...prev, ...nodesToExpand]));
+  // Event handlers
+  const handleNodeExpansion = (nodeId) => {
+    const newExpanded = new Set(expandedNodes);
+    if (newExpanded.has(nodeId)) {
+      newExpanded.delete(nodeId);
+    } else {
+      newExpanded.add(nodeId);
     }
-  }, [searchTerm, filteredTreeData]);
-
-  // Handle node expansion
-  const handleToggleExpansion = (nodeId, event) => {
-    event.stopPropagation();
+    setExpandedNodes(newExpanded);
     
-    setExpandedNodes(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(nodeId)) {
-        newSet.delete(nodeId);
-      } else {
-        newSet.add(nodeId);
-      }
-      return newSet;
-    });
-
-    // Also update store for persistence
+    // Store state for persistence
     toggleTreeExpansion(nodeId);
   };
 
-  // Handle node click
-  const handleNodeClick = (node, event) => {
-    event.stopPropagation();
-    
+  const handleNodeClick = (node) => {
     setSelectedNodeId(node.wbs_code);
-    
     if (onNodeClick) {
       onNodeClick(node);
     }
-    
-    if (onNodeSelect) {
-      onNodeSelect(node);
-    }
   };
 
-  // Handle search change
   const handleSearchChange = (event) => {
     setSearchTerm(event.target.value);
   };
 
-  // Clear search
   const clearSearch = () => {
     setSearchTerm('');
   };
 
-  // Check if node is new
-  const isNodeNew = (node) => {
-    return showNewBadges && (
-      node.is_new === true ||
-      comparison.added.some(item => item.equipment_number === node.equipment_number)
-    );
-  };
-
-  // Get node icon based on type
-  const getNodeIcon = (node) => {
-    if (node.is_equipment) {
-      return <Description fontSize="small" />;
-    } else if (node.is_category) {
-      return <AccountTree fontSize="small" />;
-    } else {
-      return <Settings fontSize="small" />;
-    }
-  };
-
-  // Render individual tree node
-  const renderTreeNode = (node, level = 1) => {
+  // Render tree node
+  const renderTreeNode = (node, parentLevel = 0) => {
     const hasChildren = node.children && node.children.length > 0;
     const isExpanded = expandedNodes.has(node.wbs_code);
     const isSelected = selectedNodeId === node.wbs_code;
-    const isNew = isNodeNew(node);
+    const nodeLevel = node.level || (parentLevel + 1);
 
     return (
       <Box key={node.wbs_code}>
-        <TreeNode
-          elevation={1}
-          level={level}
-          isExpanded={isExpanded}
+        <TreeNodeContainer
+          level={nodeLevel}
+          isNew={node.isNew && showNewBadges}
           isSelected={isSelected}
-          isNew={isNew}
-          onClick={(e) => handleNodeClick(node, e)}
+          onClick={() => handleNodeClick(node)}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-            {/* Expansion toggle */}
+          <Box sx={{ display: 'flex', alignItems: 'center', p: 1 }}>
+            {/* Expansion button */}
             {hasChildren ? (
               <IconButton
                 size="small"
-                onClick={(e) => handleToggleExpansion(node.wbs_code, e)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNodeExpansion(node.wbs_code);
+                }}
                 sx={{ 
                   mr: 1, 
-                  color: WBS_LEVEL_COLORS[level],
-                  transition: 'transform 0.2s ease',
-                  transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
+                  color: WBS_LEVEL_COLORS[nodeLevel] || BRAND_COLORS.level3,
+                  transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                  transition: 'transform 0.2s ease'
                 }}
               >
-                <ChevronRight />
+                <ExpandMore />
               </IconButton>
             ) : (
-              <Box sx={{ width: 32, mr: 1 }} /> // Placeholder for alignment
+              <Box sx={{ width: 32 }} />
             )}
-
-            {/* Node icon */}
-            <Box sx={{ mr: 1, color: WBS_LEVEL_COLORS[level] }}>
-              {getNodeIcon(node)}
-            </Box>
 
             {/* Node content */}
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  fontWeight: level <= 2 ? 600 : 400,
-                  color: BRAND_COLORS.text,
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: nodeLevel <= 3 ? 600 : 400,
+                  color: WBS_LEVEL_COLORS[nodeLevel] || BRAND_COLORS.text,
+                  fontSize: nodeLevel <= 2 ? '0.95rem' : '0.85rem',
                   wordBreak: 'break-word'
                 }}
               >
-                {node.wbs_name}
+                <strong>{node.wbs_code}</strong> - {node.wbs_name}
               </Typography>
               
-              {/* Additional info for equipment */}
-              {node.equipment_number && (
-                <Typography 
-                  variant="caption" 
-                  sx={{ 
-                    color: BRAND_COLORS.text, 
-                    opacity: 0.7,
-                    display: 'block'
+              {node.description && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: BRAND_COLORS.text + '80',
+                    display: 'block',
+                    mt: 0.5
                   }}
                 >
-                  Code: {node.wbs_code} | Equipment: {node.equipment_number}
+                  {node.description}
                 </Typography>
-              )}
-
-              {/* Commissioning status */}
-              {node.commissioning_status && node.commissioning_status !== 'Y' && (
-                <Chip
-                  label={node.commissioning_status}
-                  size="small"
-                  color={node.commissioning_status === 'TBC' ? 'warning' : 'default'}
-                  sx={{ ml: 1, height: '18px', fontSize: '0.6rem' }}
-                />
               )}
             </Box>
 
-            {/* New badge */}
-            {isNew && (
+            {/* NEW badge */}
+            {node.isNew && showNewBadges && (
               <NewBadge
+                icon={<FiberNew />}
                 label="NEW"
                 size="small"
-                icon={<FiberNew />}
               />
             )}
           </Box>
-        </TreeNode>
+        </TreeNodeContainer>
 
         {/* Children */}
         {hasChildren && (
-          <Collapse in={isExpanded} timeout={200}>
+          <Collapse in={isExpanded} timeout="auto" unmountOnExit>
             <Box>
-              {node.children.map(child => renderTreeNode(child, level + 1))}
+              {node.children.map(childNode => 
+                renderTreeNode(childNode, nodeLevel)
+              )}
             </Box>
           </Collapse>
         )}
@@ -345,57 +312,93 @@ const WBSVisualization = ({
 
   // Render tree statistics
   const renderTreeStats = () => {
-    const totalNodes = project.wbs_structure?.length || 0;
-    const newNodes = comparison.added?.length || 0;
-    const maxLevel = totalNodes > 0 ? Math.max(...(project.wbs_structure.map(item => item.level || 1))) : 0;
+    if (treeStats.totalItems === 0) return null;
 
     return (
-      <Box sx={{ mb: 2, p: 2, backgroundColor: `${BRAND_COLORS.level1}20`, borderRadius: 1 }}>
-        <Typography variant="h6" sx={{ color: BRAND_COLORS.text, mb: 1 }}>
-          WBS Structure Overview
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <Chip 
-            label={`${totalNodes} Total Items`} 
-            color="primary" 
-            size="small" 
-          />
-          {newNodes > 0 && (
-            <Chip 
-              label={`${newNodes} New Items`} 
-              sx={{ backgroundColor: BRAND_COLORS.accent, color: BRAND_COLORS.white }}
-              size="small" 
-            />
-          )}
-          {maxLevel > 0 && (
-            <Chip 
-              label={`${maxLevel} Levels Deep`} 
-              color="default" 
-              size="small" 
-            />
-          )}
-        </Box>
+      <Box sx={{ mb: 2 }}>
+        <Paper sx={{ p: 2, backgroundColor: BRAND_COLORS.surface }}>
+          <Typography variant="h6" sx={{ color: BRAND_COLORS.text, mb: 2 }}>
+            {title || 'WBS Structure Overview'}
+          </Typography>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={6} sm={3}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" sx={{ color: BRAND_COLORS.accent }}>
+                  {treeStats.totalItems}
+                </Typography>
+                <Typography variant="caption" sx={{ color: BRAND_COLORS.text }}>
+                  Total Items
+                </Typography>
+              </Box>
+            </Grid>
+            
+            <Grid item xs={6} sm={3}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" sx={{ color: BRAND_COLORS.level2 }}>
+                  {treeStats.equipmentItems}
+                </Typography>
+                <Typography variant="caption" sx={{ color: BRAND_COLORS.text }}>
+                  Equipment Items
+                </Typography>
+              </Box>
+            </Grid>
+            
+            {showNewBadges && treeStats.newItems > 0 && (
+              <Grid item xs={6} sm={3}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4" sx={{ color: BRAND_COLORS.accent }}>
+                    {treeStats.newItems}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: BRAND_COLORS.text }}>
+                    New Items
+                  </Typography>
+                </Box>
+              </Grid>
+            )}
+            
+            <Grid item xs={6} sm={3}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" sx={{ color: BRAND_COLORS.level3 }}>
+                  {treeStats.levels}
+                </Typography>
+                <Typography variant="caption" sx={{ color: BRAND_COLORS.text }}>
+                  WBS Levels
+                </Typography>
+              </Box>
+            </Grid>
+          </Grid>
+        </Paper>
       </Box>
     );
   };
 
-  // Handle empty state
-  if (!project.wbs_structure || project.wbs_structure.length === 0) {
+  // Handle loading state
+  if (ui.loading) {
     return (
-      <Box sx={{ p: 3, textAlign: 'center' }}>
-        <AccountTree sx={{ fontSize: 48, color: BRAND_COLORS.level3, mb: 2 }} />
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <LoadingSpinner />
+      </Box>
+    );
+  }
+
+  // Handle empty state  
+  if (wbsStructureData.length === 0) {
+    return (
+      <Box sx={{ textAlign: 'center', p: 4 }}>
+        <Info sx={{ fontSize: 48, color: BRAND_COLORS.level3, mb: 2 }} />
         <Typography variant="h6" sx={{ color: BRAND_COLORS.text, mb: 1 }}>
           No WBS Structure Available
         </Typography>
-        <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7 }}>
-          Upload an equipment list to generate the WBS structure.
+        <Typography variant="body2" sx={{ color: BRAND_COLORS.text + '80' }}>
+          Upload files to generate WBS structure visualization
         </Typography>
       </Box>
     );
   }
 
   // Handle error state
-  if (treeData.length === 0 && project.wbs_structure.length > 0) {
+  if (treeData.length === 0 && wbsStructureData.length > 0) {  // ← FIXED: Use wbsStructureData
     return (
       <Alert severity="error" sx={{ m: 2 }}>
         <Typography variant="body2">
