@@ -24,6 +24,7 @@ import {
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import useProjectStore from '../store/projectStore';
+import LoadingSpinner from './LoadingSpinner';
 import { BRAND_COLORS, WBS_LEVEL_COLORS } from '../constants';
 import { wbsHelpers } from '../utils';
 
