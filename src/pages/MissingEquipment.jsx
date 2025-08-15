@@ -58,8 +58,8 @@ const MissingEquipment = () => {
   };
 
     // Step 1: Handle XER file upload and parsing
-   const handleXERFileUpload = async (file) => {
-    const file = result.file;  // ← Extract the actual file from result object
+   const handleXERFileUpload = async (result) => {  // ← Parameter name matches what's being passed
+    const file = result.file;  // ← Clean, explicit extraction
     console.log('🚨 UPLOAD FUNCTION CALLED!', file); // 
     try {
       console.log('=== STARTING XER FILE UPLOAD ===');
@@ -150,8 +150,8 @@ const MissingEquipment = () => {
   };
 
   // Step 2: Handle equipment file upload and processing
-  const handleEquipmentFileUpload = async (file) => {
-   const file = result.file;  // ← Extract the actual file from result object  
+const handleEquipmentFileUpload = async (result) => {     // ← Change parameter to 'result'
+   const file = result.file;  // ← Now this works correctly  
     try {
       console.log('=== STARTING EQUIPMENT FILE UPLOAD ===');
       addDebugInfo(`Starting equipment file upload: ${file.name} (${file.size} bytes)`);
