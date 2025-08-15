@@ -141,7 +141,7 @@ const result = { file, status: 'success' };
 
     // Check file type
     const fileExtension = fileHelpers.getFileExtension(file.name).toLowerCase();
-    const supportedExtensions = ['csv', 'xlsx', 'xls', 'xer'];
+    const supportedExtensions = ['csv', 'xlsx', 'xls', 'xer', 'txt'];
     
     if (!supportedExtensions.includes(fileExtension)) {
       validation.errors.push(`Invalid file type ".${fileExtension}". Please upload a CSV, Excel (.xlsx/.xls), or XER file.`);
