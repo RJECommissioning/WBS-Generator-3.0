@@ -57,10 +57,11 @@ const MissingEquipment = () => {
     setDebugInfo(prev => prev + '\n' + `[${new Date().toLocaleTimeString()}] ${message}`);
   };
 
-  // Step 1: Handle XER file upload and parsing
- const handleXERFileUpload = async (file) => {
-  console.log('🚨 UPLOAD FUNCTION CALLED!', file); // 
-  try {
+    // Step 1: Handle XER file upload and parsing
+   const handleXERFileUpload = async (file) => {
+    const file = result.file;  // ← Extract the actual file from result object
+    console.log('🚨 UPLOAD FUNCTION CALLED!', file); // 
+    try {
       console.log('=== STARTING XER FILE UPLOAD ===');
       addDebugInfo(`Starting XER file upload: ${file.name} (${file.size} bytes)`);
       
@@ -150,6 +151,7 @@ const MissingEquipment = () => {
 
   // Step 2: Handle equipment file upload and processing
   const handleEquipmentFileUpload = async (file) => {
+   const file = result.file;  // ← Extract the actual file from result object  
     try {
       console.log('=== STARTING EQUIPMENT FILE UPLOAD ===');
       addDebugInfo(`Starting equipment file upload: ${file.name} (${file.size} bytes)`);
