@@ -38,7 +38,7 @@ const detectFileType = (filename, content = '', fileBuffer = null) => {
   }
   
   // 3. XER files by extension
-  if (extension === 'xer') {
+  if (extension === 'txt' && content.includes('%T PROJWBS')) {
     console.log('✅ Detected as XER by extension');
     return 'xer';
   }
