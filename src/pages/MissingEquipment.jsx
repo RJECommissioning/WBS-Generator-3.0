@@ -7,7 +7,7 @@ import ExportButton from '../components/ExportButton';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { parseFile } from '../lib/fileParser';
 import { categorizeEquipment } from '../lib/equipmentProcessor';
-import { generateWBSStructure } from '../lib/wbsGenerator';
+import { compareEquipmentLists } from '../lib/projectComparer';
 
 const MissingEquipment = () => {
   console.log('=== MISSING EQUIPMENT PAGE LOADED ===');
@@ -158,45 +158,33 @@ const MissingEquipment = () => {
     }
   };
 
-  // Step 3: Process new equipment and assign WBS codes
+  // ENHANCED: Step 3 - Process new equipment using enhanced comparison logic
   const processNewEquipment = async (equipmentList) => {
     try {
-      console.log('=== STARTING NEW EQUIPMENT PROCESSING ===');
-      addDebugInfo('Starting equipment processing and WBS assignment');
+      console.log('=== STARTING ENHANCED NEW EQUIPMENT PROCESSING ===');
+      addDebugInfo('Starting enhanced equipment processing with subsystem support');
       
       clearMessages();
-      setProcessingStage('processing', 60, 'Categorizing equipment...');
+      setProcessingStage('comparing', 60, 'Comparing equipment with existing project...');
 
-      // Process equipment using existing logic
-      console.log('Processing equipment with categorizeEquipment...');
-      const processedEquipment = await categorizeEquipment(equipmentList);
-      console.log('Equipment processing completed:', {
-        totalProcessed: processedEquipment.totalProcessed,
-        categories: Object.keys(processedEquipment.categoryStats || {}).length
+      // Use enhanced comparison function instead of basic logic
+      console.log('Using enhanced comparison logic with subsystem support...');
+      const comparisonResult = await compareEquipmentLists(existingProject, equipmentList);
+      
+      console.log('Enhanced comparison completed:', {
+        newEquipment: comparisonResult.comparison.added.length,
+        existingEquipment: comparisonResult.comparison.existing.length,
+        newSubsystems: comparisonResult.subsystems?.new?.length || 0,
+        existingSubsystems: comparisonResult.subsystems?.existing?.length || 0
       });
 
-      addDebugInfo(`Equipment processing completed: ${processedEquipment.totalProcessed} items processed`);
+      addDebugInfo(`Enhanced comparison completed:`);
+      addDebugInfo(`- New equipment found: ${comparisonResult.comparison.added.length} items`);
+      addDebugInfo(`- Existing equipment: ${comparisonResult.comparison.existing.length} items`);
+      addDebugInfo(`- New subsystems: ${comparisonResult.subsystems?.new?.length || 0}`);
+      addDebugInfo(`- Existing subsystems: ${comparisonResult.subsystems?.existing?.length || 0}`);
 
-      setProcessingStage('comparing', 70, 'Finding new equipment...');
-
-      // Find new equipment by comparing with existing project
-      const existingEquipmentCodes = existingProject.equipmentCodes || [];
-      const newEquipment = processedEquipment.equipment.filter(item => 
-        !existingEquipmentCodes.includes(item.equipment_number)
-      );
-
-      console.log('New equipment identification:', {
-        existingCodes: existingEquipmentCodes.length,
-        totalEquipment: processedEquipment.equipment.length,
-        newEquipment: newEquipment.length
-      });
-
-      addDebugInfo(`Equipment comparison completed:`);
-      addDebugInfo(`- Existing equipment: ${existingEquipmentCodes.length} items`);
-      addDebugInfo(`- Total in new list: ${processedEquipment.equipment.length} items`);
-      addDebugInfo(`- New equipment found: ${newEquipment.length} items`);
-
-      if (newEquipment.length === 0) {
+      if (comparisonResult.comparison.added.length === 0) {
         const message = 'No new equipment found. All equipment items already exist in the project.';
         addDebugInfo(message);
         setError(message);
@@ -204,64 +192,38 @@ const MissingEquipment = () => {
         return;
       }
 
-      setProcessingStage('generating', 80, 'Generating WBS codes for new equipment...');
+      setProcessingStage('building', 80, 'Building combined project structure...');
 
-      // Generate WBS structure for new equipment
-      const newEquipmentProcessed = {
-        ...processedEquipment,
-        equipment: newEquipment,
-        totalProcessed: newEquipment.length
-      };
+      // Use the integrated structure from enhanced comparison
+      const combinedWBS = comparisonResult.integrated_structure;
+      const exportData = comparisonResult.export_ready;
 
-      console.log('Generating WBS structure for new equipment...');
-      const newWBSResult = await generateWBSStructure(
-        newEquipmentProcessed,
-        existingProject.projectInfo?.projectName || 'Project Update'
-      );
-
-      console.log('New WBS structure generated:', {
-        newWBSItems: newWBSResult.totalWBSItems,
-        validation: newWBSResult.validation
+      console.log('Enhanced integration completed:', {
+        combinedItems: combinedWBS.length,
+        exportItems: exportData.length,
+        summary: comparisonResult.summary
       });
 
-      addDebugInfo(`WBS structure generated: ${newWBSResult.totalWBSItems} new WBS items`);
-
-      setProcessingStage('building', 90, 'Building combined visualization...');
-
-      // TODO: Implement smart WBS code assignment based on existing project structure
-      // For now, mark all new items with isNew flag
-      const markedNewWBS = newWBSResult.wbsStructure.map(item => ({
-        ...item,
-        isNew: true
-      }));
-
-      // Combine existing and new WBS structures
-      const combinedWBS = [
-        ...existingProject.wbsStructure,
-        ...markedNewWBS
-      ];
-
-      console.log('Combined WBS structure:', {
-        existingItems: existingProject.wbsStructure.length,
-        newItems: markedNewWBS.length,
-        totalItems: combinedWBS.length
-      });
-
+      addDebugInfo(`Enhanced integration completed:`);
+      addDebugInfo(`- Combined WBS items: ${combinedWBS.length}`);
+      addDebugInfo(`- Export-ready items: ${exportData.length}`);
+      
+      // Update state with enhanced results
       setMissingEquipmentCombinedWBS(combinedWBS);
-      setMissingEquipmentExportData(markedNewWBS); // Export only new items
+      setMissingEquipmentExportData(exportData);
       
       setProcessingStage('complete', 100, 'Processing complete!');
-      setSuccess(`Successfully processed ${newEquipment.length} new equipment items and assigned WBS codes!`);
+      setSuccess(`Successfully processed ${comparisonResult.comparison.added.length} new equipment items across ${comparisonResult.subsystems?.new?.length || 0} new subsystems!`);
       
-      addDebugInfo('Processing completed successfully!');
-      addDebugInfo(`Combined structure: ${existingProject.wbsStructure.length} existing + ${markedNewWBS.length} new = ${combinedWBS.length} total`);
+      addDebugInfo('Enhanced processing completed successfully!');
+      addDebugInfo(`Final structure: ${existingProject.wbsStructure.length} existing + ${exportData.length} new = ${combinedWBS.length} total`);
       
       setCurrentStep(3); // Move to visualization step
 
     } catch (error) {
-      console.error('New equipment processing failed:', error);
-      addDebugInfo(`Processing failed: ${error.message}`);
-      setError(`Processing failed: ${error.message}`);
+      console.error('Enhanced equipment processing failed:', error);
+      addDebugInfo(`Enhanced processing failed: ${error.message}`);
+      setError(`Enhanced processing failed: ${error.message}`);
       setProcessingStage('error', 0, error.message);
     }
   };
@@ -341,105 +303,112 @@ const MissingEquipment = () => {
           </div>
         </div>
 
-        {/* Step 1: P6 WBS Data Paste */}
+        {/* Step 1: P6 Paste Input */}
         {currentStep === 1 && (
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">Step 1: Paste P6 WBS Data</h2>
-            
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Step 1: Paste P6 WBS Data</h2>
+              {existingProject.wbsStructure?.length > 0 && (
+                <button
+                  onClick={handleReset}
+                  className="text-gray-600 hover:text-gray-800 text-sm"
+                >
+                  🔄 Start Over
+                </button>
+              )}
+            </div>
+
             <P6PasteInput
               onDataPasted={handleP6DataPasted}
-              disabled={processing.stage === 'parsing'}
-              title="Paste P6 WBS Data"
-              description="Copy WBS Code and WBS Name columns from P6 and paste them here"
+              isProcessing={processing.stage === 'parsing'}
             />
 
-            {/* P6 Data Status */}
-            {p6_paste.status === 'success' && existingProject.wbsStructure?.length > 0 && (
-              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <h3 className="text-lg font-medium text-green-800 mb-2">
-                  ✅ P6 Data Processed Successfully
-                </h3>
-                <div className="text-sm text-green-700">
-                  <p><strong>Project:</strong> {existingProject.projectInfo?.projectName || 'Unknown'}</p>
-                  <p><strong>Total WBS Items:</strong> {existingProject.wbsStructure.length}</p>
-                  <p><strong>Equipment Items:</strong> {existingProject.equipmentCodes?.length || 0}</p>
-                </div>
-                
-                {/* Preview of WBS structure */}
-                <div className="mt-4">
-                  <h4 className="font-medium mb-2">WBS Structure Preview:</h4>
-                  <div className="bg-white p-3 rounded border max-h-40 overflow-y-auto">
-                    <WBSVisualization 
-                      wbsData={existingProject.wbsStructure.slice(0, 20)} 
-                      maxHeight="150px"
-                      showControls={false}
-                    />
-                    {existingProject.wbsStructure.length > 20 && (
-                      <div className="text-xs text-gray-500 mt-2">
-                        ... and {existingProject.wbsStructure.length - 20} more items
-                      </div>
-                    )}
+            {/* P6 Data Preview */}
+            {existingProject.wbsStructure?.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-lg font-medium mb-3">Existing Project Structure</h3>
+                <div className="bg-gray-50 border rounded-lg p-4">
+                  <div className="text-sm text-gray-600 mb-2">
+                    Project: {existingProject.projectInfo?.projectName} | 
+                    WBS Items: {existingProject.wbsStructure.length} | 
+                    Equipment Codes: {existingProject.equipmentCodes?.length || 0}
                   </div>
+                  <WBSVisualization 
+                    wbsData={existingProject.wbsStructure.slice(0, 50)} 
+                    showControls={false}
+                    maxHeight="300px"
+                  />
+                  {existingProject.wbsStructure.length > 50 && (
+                    <div className="text-xs text-gray-500 mt-2 text-center">
+                      Showing first 50 items of {existingProject.wbsStructure.length} total
+                    </div>
+                  )}
                 </div>
-                
-                <button
-                  onClick={handleConfirmP6Parsing}
-                  className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-                >
-                  Continue to Equipment Upload
-                </button>
-              </div>
-            )}
-
-            {/* Error Display */}
-            {p6_paste.status === 'error' && (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <h3 className="text-lg font-medium text-red-800 mb-2">
-                  ❌ P6 Parsing Error
-                </h3>
-                <p className="text-sm text-red-700">{p6_paste.error}</p>
+                <div className="mt-4">
+                  <button
+                    onClick={handleConfirmP6Parsing}
+                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    ✓ Confirm P6 Data & Continue to Equipment Upload
+                  </button>
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* Step 2: Equipment File Upload */}
+        {/* Step 2: Equipment Upload */}
         {currentStep === 2 && (
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Step 2: Upload Updated Equipment List</h2>
-              <button
-                onClick={() => handleBackToStep(1)}
-                className="text-blue-600 hover:text-blue-800 text-sm"
-              >
-                ← Back to P6 Data
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleBackToStep(1)}
+                  className="text-blue-600 hover:text-blue-800 text-sm"
+                >
+                  ← Back to P6 Data
+                </button>
+                <button
+                  onClick={handleReset}
+                  className="text-gray-600 hover:text-gray-800 text-sm"
+                >
+                  🔄 Start Over
+                </button>
+              </div>
             </div>
 
-            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-700">
-                <strong>Current Project:</strong> {existingProject.projectInfo?.projectName || 'Unknown'}<br/>
-                <strong>Existing Equipment:</strong> {existingProject.equipmentCodes?.length || 0} items
-              </p>
+            <div className="mb-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h3 className="text-sm font-medium text-blue-800 mb-2">📋 Equipment List Requirements</h3>
+                <div className="text-sm text-blue-700">
+                  <p className="mb-2">Upload your complete equipment list (existing + new equipment). Required columns:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li><strong>Subsystem</strong> - Equipment subsystem (S1, S2, S3, etc.)</li>
+                    <li><strong>Equipment Number</strong> - Equipment code (+UH101, -F102, etc.)</li>
+                    <li><strong>Parent Equipment Number</strong> - Parent equipment (if applicable)</li>
+                    <li><strong>Description</strong> - Equipment description</li>
+                    <li><strong>Commissioning (Y/N)</strong> - Commissioning status</li>
+                  </ul>
+                </div>
+              </div>
             </div>
 
             <FileUpload
-              uploadType="equipment_list"
               accept=".csv,.xlsx,.xls"
-              title="Upload Updated Equipment List"
-              description="Upload CSV or Excel file containing both existing and new equipment"
-              onFileProcessed={handleEquipmentFileUpload}
-              disabled={processing.stage === 'parsing'}
+              onFileSelect={handleEquipmentFileUpload}
+              isProcessing={processing.stage && processing.stage !== 'complete'}
+              label="Drop your equipment list here or click to browse"
+              currentFile={equipment_list.file}
+              status={equipment_list.status}
+              error={equipment_list.error}
             />
 
-            {/* Equipment File Status */}
+            {/* Equipment Processing Status */}
             {equipment_list.status === 'success' && equipment_list.data?.length > 0 && (
               <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <h3 className="text-lg font-medium text-green-800 mb-2">
-                  ✅ Equipment List Processed
-                </h3>
                 <p className="text-sm text-green-700">
-                  Found {equipment_list.data.length} equipment items in the updated list.
+                  ✓ Equipment file processed: {equipment_list.data.length} items found
                 </p>
               </div>
             )}
