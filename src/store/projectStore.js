@@ -74,7 +74,13 @@ const useProjectStore = create((set, get) => ({
 
   // Missing Equipment specific state
   missingEquipment: {
-    existingProject: { wbsStructure: [], projectInfo: {}, equipmentCodes: [] },
+    existingProject: { 
+      wbsStructure: [], 
+      projectInfo: {}, 
+      equipmentCodes: [],
+      equipmentMapping: {},      // ENHANCED: Store equipment mapping
+      existingSubsystems: {}     // ENHANCED: Store subsystem data
+    },
     combinedWBS: [],
     exportData: []
   },
@@ -105,92 +111,62 @@ const useProjectStore = create((set, get) => ({
   setProcessingStage: (stage, progress = 0, message = '') => set((state) => ({
     ui: {
       ...state.ui,
-      processing: { stage, progress, message }
-    }
-  })),
-
-  toggleModal: (modalName, isOpen) => set((state) => ({
-    ui: {
-      ...state.ui,
-      modals: {
-        ...state.ui.modals,
-        [modalName]: isOpen
+      processing: {
+        stage,
+        progress,
+        message
       }
     }
   })),
 
-  toggleTreeExpansion: (nodeId) => set((state) => ({
-    ui: {
-      ...state.ui,
-      treeExpansions: {
-        ...state.ui.treeExpansions,
-        [nodeId]: !state.ui.treeExpansions[nodeId]
-      }
-    }
-  })),
-
-  // File Upload Actions
-  setFileUpload: (uploadType, fileData) => set((state) => ({
+  // File management actions
+  setFileUpload: (type, data) => set((state) => ({
     uploads: {
       ...state.uploads,
-      [uploadType]: {
-        ...state.uploads[uploadType],
-        ...fileData
-      }
+      [type]: data
     }
   })),
 
-  uploadFile: async (uploadType, file) => {
-    const { setFileUpload, setError, setLoading } = get();
+  uploadFile: async (fileType, file) => {
+    const { setFileUpload } = get();
     
     try {
-      setLoading(true);
-      setFileUpload(uploadType, { 
-        file, 
-        status: 'uploading', 
-        error: null 
-      });
-
-      // Validate file
-      if (!file || typeof file.size !== 'number') {
-        throw new Error('Invalid file provided');
-      }
-
-      if (!fileHelpers.isValidFile(file)) {
-        throw new Error('Invalid file type. Please upload a CSV file.');
-      }
-
-      // Read file content
-      const content = await fileHelpers.readFileAsText(file);
-      
-      // Simple data structure for now
-      const parsedData = { raw: content, type: 'csv' };
-
-      setFileUpload(uploadType, {
-        status: 'success',
-        data: parsedData,
+      setFileUpload(fileType, {
+        file,
+        status: 'uploading',
         error: null
       });
 
-      setLoading(false);
-      return parsedData;
+      // Parse file using your existing file parser
+      const { parseFile } = await import('../lib/fileParser');
+      const result = await parseFile(file);
+
+      setFileUpload(fileType, {
+        file,
+        status: 'success',
+        error: null,
+        data: result.data,
+        validation: result.validation
+      });
+
+      return result;
 
     } catch (error) {
-      setFileUpload(uploadType, {
+      setFileUpload(fileType, {
+        file,
         status: 'error',
         error: error.message,
-        data: []
+        data: [],
+        validation: null
       });
-      setError(`File upload failed: ${error.message}`);
-      setLoading(false);
       throw error;
     }
   },
 
-  clearFileUpload: (uploadType) => set((state) => ({
+  clearUpload: (type) => set((state) => ({
     uploads: {
       ...state.uploads,
-      [uploadType]: uploadType === 'p6_paste' ? {
+      [type]: state.uploads[type].file ? {
         content: '',
         status: 'idle',
         error: null,
@@ -228,7 +204,7 @@ const useProjectStore = create((set, get) => ({
       setP6PasteData(pasteContent, 'processing');
       
       // Import P6 parser
-      const { parseP6PasteData, extractEquipmentCodesFromP6WBS } = await import('../lib/p6Parser');
+      const { parseP6PasteData } = await import('../lib/p6Parser');
       
       // Parse the P6 data
       const parseResult = await parseP6PasteData(pasteContent);
@@ -237,14 +213,13 @@ const useProjectStore = create((set, get) => ({
         throw new Error('No valid WBS data found in paste content');
       }
       
-      // Extract equipment codes for comparison
-      const equipmentCodes = extractEquipmentCodesFromP6WBS(parseResult.data);
-      
-      // Update missing equipment state
+      // ENHANCED: Store full P6 parsing result with enhanced data
       setMissingEquipmentExistingProject({
         wbsStructure: parseResult.data,
         projectInfo: parseResult.projectInfo,
-        equipmentCodes: equipmentCodes
+        equipmentCodes: parseResult.equipmentCodes || [],
+        equipmentMapping: parseResult.equipmentMapping || {},      // ENHANCED: Store equipment mapping
+        existingSubsystems: parseResult.existingSubsystems || {}   // ENHANCED: Store subsystem data
       });
       
       // Update P6 paste state
@@ -450,11 +425,17 @@ const useProjectStore = create((set, get) => ({
     }
   },
 
-  // Missing Equipment Actions
+  // ENHANCED: Missing Equipment Actions
   setMissingEquipmentExistingProject: (project) => set((state) => ({
     missingEquipment: { 
       ...state.missingEquipment, 
-      existingProject: project 
+      existingProject: {
+        wbsStructure: project.wbsStructure || [],
+        projectInfo: project.projectInfo || {},
+        equipmentCodes: project.equipmentCodes || [],
+        equipmentMapping: project.equipmentMapping || {},      // ENHANCED: Store equipment mapping
+        existingSubsystems: project.existingSubsystems || {}   // ENHANCED: Store subsystem data
+      }
     }
   })),
 
@@ -474,7 +455,13 @@ const useProjectStore = create((set, get) => ({
 
   resetMissingEquipment: () => set((state) => ({
     missingEquipment: {
-      existingProject: { wbsStructure: [], projectInfo: {}, equipmentCodes: [] },
+      existingProject: { 
+        wbsStructure: [], 
+        projectInfo: {}, 
+        equipmentCodes: [],
+        equipmentMapping: {},      // ENHANCED: Reset equipment mapping
+        existingSubsystems: {}     // ENHANCED: Reset subsystem data
+      },
       combinedWBS: [],
       exportData: []
     },
@@ -662,7 +649,13 @@ const useProjectStore = create((set, get) => ({
       }
     },
     missingEquipment: {
-      existingProject: { wbsStructure: [], projectInfo: {}, equipmentCodes: [] },
+      existingProject: { 
+        wbsStructure: [], 
+        projectInfo: {}, 
+        equipmentCodes: [],
+        equipmentMapping: {},      // ENHANCED: Reset equipment mapping
+        existingSubsystems: {}     // ENHANCED: Reset subsystem data
+      },
       combinedWBS: [],
       exportData: []
     }
