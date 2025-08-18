@@ -1,8 +1,8 @@
 /**
- * P6 Copy/Paste Parser
+ * P6 Copy/Paste Parser - ENHANCED for Missing Equipment
  * 
  * Purpose: Parse P6 WBS data that users copy directly from P6 and paste
- * into a text area. Much simpler than complex XER file parsing.
+ * into a text area. Now includes proper equipment extraction and subsystem detection.
  * 
  * Expected format:
  * WBS Code	WBS Name
@@ -12,7 +12,7 @@
  * Supports both tab-separated and space-separated formats.
  */
 
-// Main P6 paste parsing function
+// Main P6 paste parsing function - ENHANCED
 export const parseP6PasteData = (pasteContent) => {
   return new Promise((resolve, reject) => {
     try {
@@ -45,15 +45,25 @@ export const parseP6PasteData = (pasteContent) => {
       const projectInfo = extractProjectInfoFromP6(finalStructure);
       console.log('✅ Project info extracted:', projectInfo);
 
-      // Step 6: Build final result
-      console.log('\n=== STEP 6: BUILDING FINAL RESULT ===');
+      // Step 6: ENHANCED - Extract equipment and subsystem data
+      console.log('\n=== STEP 6: EXTRACTING EQUIPMENT & SUBSYSTEM DATA ===');
+      const extractionResults = extractEquipmentCodesFromP6WBS(finalStructure);
+      console.log('✅ Equipment and subsystem extraction completed');
+
+      // Step 7: Build enhanced final result
+      console.log('\n=== STEP 7: BUILDING ENHANCED RESULT ===');
       const result = {
         type: 'p6_paste',
         hasData: finalStructure.length > 0,
         data: finalStructure,
+        wbsStructure: finalStructure, // For consistency with other parts of your app
         dataLength: finalStructure.length,
         originalHeaders: ['wbs_code', 'parent_wbs_code', 'wbs_name'],
         projectInfo: projectInfo,
+        // ENHANCED: Include extraction results
+        equipmentCodes: extractionResults.equipmentCodes,
+        equipmentMapping: extractionResults.equipmentMapping,
+        existingSubsystems: extractionResults.existingSubsystems,
         validation: {
           isValid: true,
           errors: [],
@@ -67,7 +77,9 @@ export const parseP6PasteData = (pasteContent) => {
         type: result.type,
         hasData: result.hasData,
         dataLength: result.dataLength,
-        projectName: result.projectInfo?.projectName
+        projectName: result.projectInfo?.projectName,
+        equipmentItems: extractionResults.equipmentCodes.length,
+        subsystems: Object.keys(extractionResults.existingSubsystems).length
       });
 
       resolve(result);
@@ -250,90 +262,63 @@ const validateAndSortWBS = (wbsStructure) => {
     const bParts = b.wbs_code.split('.').map(part => parseInt(part) || 0);
     
     for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-      const aVal = aParts[i] || 0;
-      const bVal = bParts[i] || 0;
+      const aPart = aParts[i] || 0;
+      const bPart = bParts[i] || 0;
       
-      if (aVal !== bVal) {
-        return aVal - bVal;
+      if (aPart !== bPart) {
+        return aPart - bPart;
       }
     }
     
     return 0;
   });
   
-  // Validate hierarchy
-  validateWBSHierarchy(sortedStructure);
+  // Validate hierarchy (no orphaned items)
+  console.log('Validating WBS hierarchy...');
+  const wbsCodeSet = new Set(sortedStructure.map(item => item.wbs_code));
   
-  // Clean structure (remove metadata)
-  const cleanedStructure = sortedStructure.map(item => ({
-    wbs_code: item.wbs_code,
-    parent_wbs_code: item.parent_wbs_code,
-    wbs_name: item.wbs_name
-  }));
+  const orphanedItems = sortedStructure.filter(item => {
+    if (!item.parent_wbs_code) return false; // Root items are fine
+    return !wbsCodeSet.has(item.parent_wbs_code);
+  });
   
-  console.log(`✅ Final sorted structure: ${cleanedStructure.length} items`);
-  return cleanedStructure;
+  if (orphanedItems.length > 0) {
+    console.warn(`Found ${orphanedItems.length} orphaned items (parent not found)`);
+    orphanedItems.slice(0, 5).forEach(item => {
+      console.warn(`Orphaned: ${item.wbs_code} → parent ${item.parent_wbs_code} not found`);
+    });
+  } else {
+    console.log('✅ WBS hierarchy validation passed - no orphaned items');
+  }
+  
+  const rootItems = sortedStructure.filter(item => !item.parent_wbs_code);
+  console.log(`Root items found: ${rootItems.length}`);
+  
+  console.log(`✅ Final sorted structure: ${sortedStructure.length} items`);
+  return sortedStructure;
 };
 
 // Remove duplicate WBS items
 const removeDuplicates = (wbsStructure) => {
   const seen = new Set();
-  const unique = [];
-  let duplicatesFound = 0;
-  
-  wbsStructure.forEach(item => {
-    const key = `${item.wbs_code}|${item.wbs_name}`;
-    
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(item);
-    } else {
-      duplicatesFound++;
-      console.log(`Removing duplicate: ${item.wbs_code} - ${item.wbs_name}`);
+  return wbsStructure.filter(item => {
+    const key = item.wbs_code;
+    if (seen.has(key)) {
+      return false;
     }
+    seen.add(key);
+    return true;
   });
-  
-  if (duplicatesFound > 0) {
-    console.log(`Removed ${duplicatesFound} duplicate items`);
-  }
-  
-  return unique;
 };
 
-// Validate WBS hierarchy
-const validateWBSHierarchy = (wbsStructure) => {
-  console.log('Validating WBS hierarchy...');
-  
-  const wbsCodes = new Set(wbsStructure.map(item => item.wbs_code));
-  const orphanedItems = [];
-  
-  wbsStructure.forEach(item => {
-    if (item.parent_wbs_code && !wbsCodes.has(item.parent_wbs_code)) {
-      orphanedItems.push(`${item.wbs_code} → ${item.parent_wbs_code}`);
-    }
-  });
-
-  if (orphanedItems.length > 0) {
-    console.warn('Found orphaned WBS items:');
-    orphanedItems.slice(0, 10).forEach(item => {
-      console.warn(`  ${item}`);
-    });
-    console.warn(`Total orphaned items: ${orphanedItems.length}`);
-  } else {
-    console.log('✅ WBS hierarchy validation passed - no orphaned items');
-  }
-
-  const rootItems = wbsStructure.filter(item => !item.parent_wbs_code);
-  console.log(`Root items found: ${rootItems.length}`);
-};
-
-// Extract project info from P6 data
+// Extract project info from WBS structure
 const extractProjectInfoFromP6 = (wbsStructure) => {
   console.log('Extracting project info from P6 data...');
   
   // Find root item (project name)
   const rootItem = wbsStructure.find(item => !item.parent_wbs_code);
-  const projectName = rootItem ? rootItem.wbs_name : 'Unknown Project';
+  const projectName = rootItem ? 
+    rootItem.wbs_name : 'Unknown Project';
   
   // Calculate basic stats
   const stats = {
@@ -354,22 +339,111 @@ const extractProjectInfoFromP6 = (wbsStructure) => {
   return projectInfo;
 };
 
-// Extract equipment codes from WBS structure (for comparison)
+// ENHANCED: Extract actual equipment codes and subsystem data from WBS structure  
 export const extractEquipmentCodesFromP6WBS = (wbsStructure) => {
-  console.log('Extracting equipment codes from P6 WBS structure...');
+  console.log('ENHANCED: Extracting equipment codes and subsystems from P6 WBS structure...');
   
-  const equipmentCodes = wbsStructure
-    .filter(item => item.wbs_name && item.wbs_name.includes('|'))
-    .map(item => {
-      const parts = item.wbs_name.split('|');
-      return parts[0].trim();
-    })
-    .filter(code => code); // Remove empty codes
+  // Use the same equipment patterns as equipmentProcessor.js
+  const equipmentPatterns = [
+    /^\+UH\d+/i,     // +UH101, +UH102, +UH103
+    /^\+GB\d+/i,     // +GB52, +GB63, +GB74
+    /^\+WA\d+/i,     // +WA10, +WA11
+    /^\+WC\d+/i,     // +WC10, +WC11
+    /^T\d+/i,        // T10, T11, T12
+    /^-F\d+/i,       // -F102, -F103, -F104
+    /^-Y\d+/i,       // -Y110, -Y111, -Y112
+    /^-FM\d+/i,      // -FM11, -FM21
+    /^\+Z01-/i,      // +Z01-ASDU
+    /^PSU\d*/i,      // PSU1, PSU2
+    /^UPS\d*/i,      // UPS1, UPS2
+    /^BCR\d*/i,      // BCR1
+    /^-P\d+/i,       // -P20, -P210
+    /^-KF\d+/i,      // -KF20
+    /^-UC\d+/i,      // -UC22
+    /^NET\d*/i,      // NET1
+    /^TA\d*/i,       // TA1
+    /^NER\d*/i,      // NER1
+    /^E\d+/i,        // E1, E2
+    /^EB\d+/i,       // EB1
+    /^EEP\d+/i,      // EEP1
+    /^MEB\d*/i,      // MEB1
+    /^EG01-/i,       // EG01-
+    /^BAN\d*/i,      // BAN1
+    /^WBC-/i,        // WBC-
+    /^LS\d+-/i,      // LS1-002
+    /^MCP-/i,        // MCP-002
+    /^-X\d+/i,       // -X110
+    /^REED-/i,       // REED-
+    /^SCR-/i,        // SCR-
+    /^MPIR-/i,       // MPIR-
+    /^KP-/i          // KP-
+  ];
   
-  console.log(`Extracted ${equipmentCodes.length} equipment codes from WBS structure`);
-  console.log('Sample equipment codes:', equipmentCodes.slice(0, 10));
+  const equipmentMapping = {};
+  const extractedCodes = [];
+  const existingSubsystems = {};
   
-  return equipmentCodes;
+  wbsStructure.forEach(item => {
+    const wbsName = item.wbs_name || '';
+    
+    // Extract subsystem information (S1 | +Z01 | Subsystem Name)
+    const subsystemMatch = wbsName.match(/^S(\d+)\s*\|\s*([^|]+)\s*\|\s*(.+)/);
+    if (subsystemMatch) {
+      const subsystemNumber = subsystemMatch[1];
+      const subsystemCode = subsystemMatch[2].trim();
+      const subsystemName = subsystemMatch[3].trim();
+      
+      existingSubsystems[`S${subsystemNumber}`] = {
+        wbs_code: item.wbs_code,
+        code: subsystemCode,
+        name: subsystemName,
+        full_name: wbsName
+      };
+      
+      console.log(`Found subsystem: S${subsystemNumber} = ${subsystemCode} (${subsystemName}) at WBS ${item.wbs_code}`);
+      return; // Skip equipment processing for subsystem headers
+    }
+    
+    // Skip if no pipe symbol (not equipment)
+    if (!wbsName.includes('|')) return;
+    
+    // Look for equipment code before the first pipe
+    const beforePipe = wbsName.split('|')[0].trim();
+    
+    // Test against equipment patterns
+    for (const pattern of equipmentPatterns) {
+      if (pattern.test(beforePipe)) {
+        const equipmentCode = beforePipe;
+        const description = wbsName.split('|')[1]?.trim() || '';
+        
+        // Store equipment with its WBS location and hierarchy info
+        equipmentMapping[equipmentCode] = {
+          wbs_code: item.wbs_code,
+          parent_wbs_code: item.parent_wbs_code,
+          wbs_name: item.wbs_name,
+          description: description,
+          level: item.level || item.wbs_code.split('.').length
+        };
+        
+        extractedCodes.push(equipmentCode);
+        console.log(`Equipment found: ${equipmentCode} at WBS ${item.wbs_code}`);
+        break;
+      }
+    }
+  });
+  
+  console.log(`ENHANCED EXTRACTION RESULTS:`);
+  console.log(`- Equipment codes: ${extractedCodes.length}`);
+  console.log(`- Equipment mapping entries: ${Object.keys(equipmentMapping).length}`);
+  console.log(`- Existing subsystems: ${Object.keys(existingSubsystems).length}`);
+  console.log('Sample equipment codes:', extractedCodes.slice(0, 10));
+  console.log('Existing subsystems:', Object.keys(existingSubsystems));
+  
+  return {
+    equipmentCodes: extractedCodes,
+    equipmentMapping: equipmentMapping,
+    existingSubsystems: existingSubsystems
+  };
 };
 
 // Get format example for user guidance
@@ -403,3 +477,6 @@ export const isP6Format = (content) => {
   return (headerLine.includes('wbs code') && headerLine.includes('wbs name')) ||
          (headerLine.includes('wbs_code') && headerLine.includes('wbs_name'));
 };
+
+// LEGACY COMPATIBILITY: Keep the old function name as an alias
+export const parseP6Paste = parseP6PasteData;
