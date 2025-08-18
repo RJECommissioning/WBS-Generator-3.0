@@ -9,7 +9,7 @@ import { WBS_LEVEL_COLORS, BRAND_COLORS } from '../constants';
  */
 
 // ENHANCED: Main comparison function with subsystem support
-export const compareEquipmentLists = (existingProject, updatedEquipmentList) => {
+export const compareEquipmentLists = async (existingProject, updatedEquipmentList) => {
   try {
     if (!existingProject || !updatedEquipmentList) {
       throw new Error('Both existing project and updated equipment list are required');
