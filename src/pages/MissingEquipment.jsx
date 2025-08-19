@@ -43,54 +43,64 @@ const MissingEquipment = () => {
     setFileUpload
   } = useProjectStore();
 
-  const [currentStep, setCurrentStep] = useState(1);
+const [currentStep, setCurrentStep] = useState(1);
   const [debugInfo, setDebugInfo] = useState('');
 
-// Reset state on component mount
-useEffect(() => {
-  console.log('Missing Equipment component mounted - resetting state');
-  resetMissingEquipment();
-  clearMessages();
-  setCurrentStep(1);
-}, [resetMissingEquipment, clearMessages]);
+  // Debug logging helper - MOVED UP SO IT'S AVAILABLE IN USEEFFECT
+  const addDebugInfo = (message) => {
+    console.log('[DEBUG]', message);
+    setDebugInfo(prev => prev + '\n' + `[${new Date().toLocaleTimeString()}] ${message}`);
+  };
 
-// AUTO-TRIGGER: Start comparison when both P6 data AND equipment file are ready
-useEffect(() => {
-  console.log('[AUTO-TRIGGER] Checking conditions...');
-  console.log('P6 data ready:', missingEquipment.existingProject.equipmentCodes?.length > 0);
-  console.log('Equipment file status:', uploads.equipment_list.status);
-  console.log('Equipment file data:', uploads.equipment_list.data?.length);
-  
-  // Check if both conditions are met
-  const p6DataReady = missingEquipment.existingProject.equipmentCodes?.length > 0;
-  const equipmentFileReady = uploads.equipment_list.status === 'success' && 
-                            uploads.equipment_list.data?.length > 0;
-  
-  if (p6DataReady && equipmentFileReady) {
-    console.log('[AUTO-TRIGGER] Both conditions met - starting comparison!');
+  // Reset state on component mount
+  useEffect(() => {
+    console.log('Missing Equipment component mounted - resetting state');
+    resetMissingEquipment();
+    clearMessages();
+    setCurrentStep(1);
+  }, [resetMissingEquipment, clearMessages]);
+
+  // AUTO-TRIGGER: Start comparison when both P6 data AND equipment file are ready
+  useEffect(() => {
+    console.log('[AUTO-TRIGGER] Checking conditions...');
+    console.log('P6 data ready:', existingProject?.equipmentCodes?.length > 0);
+    console.log('Equipment file status:', equipment_list?.status);
+    console.log('Equipment file data:', equipment_list?.data?.length);
     
-    // Start the comparison process automatically
-    const triggerComparison = async () => {
-      try {
-        const success = await processMissingEquipment(uploads.equipment_list.file);
-        if (success) {
-          console.log('[AUTO-TRIGGER] Comparison completed successfully!');
+    // Check if both conditions are met
+    const p6DataReady = existingProject?.equipmentCodes?.length > 0;
+    const equipmentFileReady = equipment_list?.status === 'success' && 
+                              equipment_list?.data?.length > 0;
+    
+    if (p6DataReady && equipmentFileReady) {
+      console.log('[AUTO-TRIGGER] Both conditions met - starting comparison!');
+      addDebugInfo('AUTO-TRIGGER: Both conditions met - starting comparison!');
+      
+      // Start the comparison process automatically
+      const triggerComparison = async () => {
+        try {
+          const success = await processMissingEquipment(equipment_list.file);
+          if (success) {
+            console.log('[AUTO-TRIGGER] Comparison completed successfully!');
+            addDebugInfo('AUTO-TRIGGER: Comparison completed successfully!');
+          }
+        } catch (error) {
+          console.error('[AUTO-TRIGGER] Comparison failed:', error);
+          addDebugInfo(`AUTO-TRIGGER: Comparison failed: ${error.message}`);
         }
-      } catch (error) {
-        console.error('[AUTO-TRIGGER] Comparison failed:', error);
-      }
-    };
-    
-    triggerComparison();
-  }
-}, [
-  missingEquipment.existingProject.equipmentCodes,
-  uploads.equipment_list.status,
-  uploads.equipment_list.data,
-  uploads.equipment_list.file,
-  processMissingEquipment
-]);
-  
+      };
+      
+      triggerComparison();
+    }
+  }, [
+    existingProject?.equipmentCodes,
+    equipment_list?.status,
+    equipment_list?.data,
+    equipment_list?.file,
+    processMissingEquipment,
+    addDebugInfo
+  ]);
+
   // Step 1: Handle P6 paste data processing
   const handleP6DataPasted = async (pasteContent) => {
     try {
