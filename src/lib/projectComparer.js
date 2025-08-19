@@ -394,7 +394,7 @@ const createCategoriesForNewSubsystem = (subsystemWBSCode, equipment, processedE
 };
 
 // MAIN WRAPPER: Updated function that uses the new comparison approach
-export const compareEquipmentLists = (existingProject, updatedEquipmentList) => {
+export const compareEquipmentLists = async (existingProject, updatedEquipmentList) => {
   try {
     if (!existingProject || !updatedEquipmentList) {
       throw new Error('Both existing project and updated equipment list are required');
