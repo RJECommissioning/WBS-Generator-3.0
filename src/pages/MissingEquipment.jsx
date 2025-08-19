@@ -39,19 +39,57 @@ const MissingEquipment = () => {
     setError,
     setSuccess,
     clearMessages,
+    processMissingEquipment,
     setFileUpload
   } = useProjectStore();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [debugInfo, setDebugInfo] = useState('');
 
-  // Reset state on component mount
+// Reset state on component mount
   useEffect(() => {
     console.log('Missing Equipment component mounted - resetting state');
     resetMissingEquipment();
     clearMessages();
     setCurrentStep(1);
   }, [resetMissingEquipment, clearMessages]);
+
+  // AUTO-TRIGGER: Start comparison when both P6 data AND equipment file are ready
+  useEffect(() => {
+    console.log('[AUTO-TRIGGER] Checking conditions...');
+    console.log('P6 data ready:', missingEquipment.existingProject.equipmentCodes?.length > 0);
+    console.log('Equipment file status:', uploads.equipment_list.status);
+    console.log('Equipment file data:', uploads.equipment_list.data?.length);
+    
+    // Check if both conditions are met
+    const p6DataReady = missingEquipment.existingProject.equipmentCodes?.length > 0;
+    const equipmentFileReady = uploads.equipment_list.status === 'success' && 
+                              uploads.equipment_list.data?.length > 0;
+    
+    if (p6DataReady && equipmentFileReady) {
+      console.log('[AUTO-TRIGGER] Both conditions met - starting comparison!');
+      
+      // Start the comparison process automatically
+      const triggerComparison = async () => {
+        try {
+          const success = await processMissingEquipment(uploads.equipment_list.file);
+          if (success) {
+            console.log('[AUTO-TRIGGER] Comparison completed successfully!');
+          }
+        } catch (error) {
+          console.error('[AUTO-TRIGGER] Comparison failed:', error);
+        }
+      };
+      
+      triggerComparison();
+    }
+  }, [
+    missingEquipment.existingProject.equipmentCodes,
+    uploads.equipment_list.status,
+    uploads.equipment_list.data,
+    uploads.equipment_list.file,
+    processMissingEquipment
+  ]);
 
   // Debug logging helper
   const addDebugInfo = (message) => {
@@ -67,10 +105,8 @@ const MissingEquipment = () => {
       
       clearMessages();
       setProcessingStage('parsing', 10, 'Parsing P6 WBS data...');
-
       console.log('Processing P6 paste data...');
       const parseResult = await processP6Paste(pasteContent);
-
       // FIXED: Log parseResult directly since existingProject state is async
       console.log('P6 parsing successful:', {
         dataLength: parseResult.dataLength,
@@ -78,11 +114,9 @@ const MissingEquipment = () => {
         equipmentCodes: parseResult.equipmentCodes?.length || 0,
         equipmentMapping: parseResult.equipmentMapping ? Object.keys(parseResult.equipmentMapping).length : 0
       });
-
       addDebugInfo(`P6 parsing successful! Found ${parseResult.dataLength} WBS items`);
       addDebugInfo(`Project: ${parseResult.projectInfo?.projectName || 'Unknown'}`);
       addDebugInfo(`Equipment codes extracted: ${parseResult.equipmentCodes?.length || 0}`);
-
       setProcessingStage('complete', 100, 'P6 data processed successfully!');
       setSuccess(`P6 data processed successfully! Found ${parseResult.dataLength} WBS items.`);
       
@@ -92,12 +126,11 @@ const MissingEquipment = () => {
       console.error('=== P6 PARSING FAILED ===');
       console.error('P6 parsing error:', error);
       addDebugInfo(`P6 parsing failed: ${error.message}`);
-
       setError(`P6 parsing failed: ${error.message}`);
       setProcessingStage('error', 0, error.message);
     }
   };
-
+  
   // Step 2: Handle equipment file upload and processing
   const handleEquipmentFileUpload = async (result) => {
     const file = result.file;
