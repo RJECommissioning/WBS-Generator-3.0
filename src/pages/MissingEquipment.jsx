@@ -47,56 +47,50 @@ const MissingEquipment = () => {
   const [debugInfo, setDebugInfo] = useState('');
 
 // Reset state on component mount
-  useEffect(() => {
-    console.log('Missing Equipment component mounted - resetting state');
-    resetMissingEquipment();
-    clearMessages();
-    setCurrentStep(1);
-  }, [resetMissingEquipment, clearMessages]);
+useEffect(() => {
+  console.log('Missing Equipment component mounted - resetting state');
+  resetMissingEquipment();
+  clearMessages();
+  setCurrentStep(1);
+}, [resetMissingEquipment, clearMessages]);
 
-  // AUTO-TRIGGER: Start comparison when both P6 data AND equipment file are ready
-  useEffect(() => {
-    console.log('[AUTO-TRIGGER] Checking conditions...');
-    console.log('P6 data ready:', missingEquipment.existingProject.equipmentCodes?.length > 0);
-    console.log('Equipment file status:', uploads.equipment_list.status);
-    console.log('Equipment file data:', uploads.equipment_list.data?.length);
+// AUTO-TRIGGER: Start comparison when both P6 data AND equipment file are ready
+useEffect(() => {
+  console.log('[AUTO-TRIGGER] Checking conditions...');
+  console.log('P6 data ready:', missingEquipment.existingProject.equipmentCodes?.length > 0);
+  console.log('Equipment file status:', uploads.equipment_list.status);
+  console.log('Equipment file data:', uploads.equipment_list.data?.length);
+  
+  // Check if both conditions are met
+  const p6DataReady = missingEquipment.existingProject.equipmentCodes?.length > 0;
+  const equipmentFileReady = uploads.equipment_list.status === 'success' && 
+                            uploads.equipment_list.data?.length > 0;
+  
+  if (p6DataReady && equipmentFileReady) {
+    console.log('[AUTO-TRIGGER] Both conditions met - starting comparison!');
     
-    // Check if both conditions are met
-    const p6DataReady = missingEquipment.existingProject.equipmentCodes?.length > 0;
-    const equipmentFileReady = uploads.equipment_list.status === 'success' && 
-                              uploads.equipment_list.data?.length > 0;
-    
-    if (p6DataReady && equipmentFileReady) {
-      console.log('[AUTO-TRIGGER] Both conditions met - starting comparison!');
-      
-      // Start the comparison process automatically
-      const triggerComparison = async () => {
-        try {
-          const success = await processMissingEquipment(uploads.equipment_list.file);
-          if (success) {
-            console.log('[AUTO-TRIGGER] Comparison completed successfully!');
-          }
-        } catch (error) {
-          console.error('[AUTO-TRIGGER] Comparison failed:', error);
+    // Start the comparison process automatically
+    const triggerComparison = async () => {
+      try {
+        const success = await processMissingEquipment(uploads.equipment_list.file);
+        if (success) {
+          console.log('[AUTO-TRIGGER] Comparison completed successfully!');
         }
-      };
-      
-      triggerComparison();
-    }
-  }, [
-    missingEquipment.existingProject.equipmentCodes,
-    uploads.equipment_list.status,
-    uploads.equipment_list.data,
-    uploads.equipment_list.file,
-    processMissingEquipment
-  ]);
-
-  // Debug logging helper
-  const addDebugInfo = (message) => {
-    console.log('[DEBUG]', message);
-    setDebugInfo(prev => prev + '\n' + `[${new Date().toLocaleTimeString()}] ${message}`);
-  };
-
+      } catch (error) {
+        console.error('[AUTO-TRIGGER] Comparison failed:', error);
+      }
+    };
+    
+    triggerComparison();
+  }
+}, [
+  missingEquipment.existingProject.equipmentCodes,
+  uploads.equipment_list.status,
+  uploads.equipment_list.data,
+  uploads.equipment_list.file,
+  processMissingEquipment
+]);
+  
   // Step 1: Handle P6 paste data processing
   const handleP6DataPasted = async (pasteContent) => {
     try {
