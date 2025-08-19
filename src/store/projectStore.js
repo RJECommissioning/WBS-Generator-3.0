@@ -379,51 +379,100 @@ const useProjectStore = create((set, get) => ({
   },
 
   // MISSING EQUIPMENT FEATURE
-  processMissingEquipment: async (xerFile, equipmentFile) => {
-    const { 
-      uploadFile, 
-      setProcessingStage, 
-      setError,
-      setSuccess,
-      setComparisonResults,
-      setMissingEquipmentExistingProject,
-      setMissingEquipmentCombinedWBS,
-      setMissingEquipmentExportData
-    } = get();
-    
-    try {
-      setProcessingStage('parsing', 10, 'Parsing existing project (XER)...');
-      
-      // Upload and parse XER file
-      const xerData = await uploadFile('xer_file', xerFile);
-      
-      setProcessingStage('parsing', 30, 'Parsing equipment list...');
-      
-      // Upload and parse equipment file
-      const equipmentData = await uploadFile('equipment_list', equipmentFile);
-      
-      setProcessingStage('comparing', 50, 'Comparing equipment lists...');
-      
-      // Equipment comparison will be handled by lib/projectComparer.js
-      // For now, simulate the process
-      
-      setProcessingStage('assigning_codes', 70, 'Assigning WBS codes to new equipment...');
-      
-      // Smart WBS code assignment will be handled by enhanced lib/wbsGenerator.js
-      
-      setProcessingStage('building_tree', 90, 'Building combined visualization...');
-      
-      setProcessingStage('complete', 100, 'Missing equipment processed successfully!');
-      setSuccess('New equipment identified and assigned WBS codes!');
-      
-      return true;
-      
-    } catch (error) {
-      setProcessingStage('error', 0, error.message);
-      setError(`Failed to process missing equipment: ${error.message}`);
-      return false;
+// MISSING EQUIPMENT FEATURE - UPDATED TO USE P6 PASTE + EQUIPMENT FILE
+processMissingEquipment: async (equipmentFile) => {
+  const { 
+    uploadFile, 
+    setProcessingStage, 
+    setError,
+    setSuccess,
+    setComparisonResults,
+    setMissingEquipmentExistingProject,
+    setMissingEquipmentCombinedWBS,
+    setMissingEquipmentExportData,
+    missingEquipment
+  } = get();
+  
+  try {
+    // Check if P6 data exists first
+    if (!missingEquipment.existingProject.equipmentCodes || 
+        missingEquipment.existingProject.equipmentCodes.length === 0) {
+      throw new Error('P6 data must be pasted before uploading equipment list');
     }
-  },
+    
+    setProcessingStage('parsing', 30, 'Parsing equipment list...');
+    
+    // Upload and parse equipment file
+    const equipmentData = await uploadFile('equipment_list', equipmentFile);
+    
+    if (!equipmentData.hasData || !equipmentData.data || equipmentData.data.length === 0) {
+      throw new Error('Equipment file contains no valid data');
+    }
+    
+    setProcessingStage('comparing', 50, 'Comparing equipment lists...');
+    
+    // Import the comparison function
+    const { compareEquipmentWithSubsystems } = await import('../lib/projectComparer');
+    
+    // Prepare existing P6 data in expected format
+    const existingP6Data = {
+      equipmentCodes: missingEquipment.existingProject.equipmentCodes,
+      existingSubsystems: missingEquipment.existingProject.existingSubsystems || {},
+      equipmentMapping: missingEquipment.existingProject.equipmentMapping || {},
+      wbsStructure: missingEquipment.existingProject.wbsStructure || []
+    };
+    
+    // Prepare new equipment data in expected format
+    const newEquipmentData = {
+      equipment: equipmentData.data,
+      subsystemMapping: equipmentData.subsystemMapping || {}
+    };
+    
+    console.log('Starting equipment comparison...');
+    console.log('Existing P6 equipment count:', existingP6Data.equipmentCodes.length);
+    console.log('New equipment list count:', newEquipmentData.equipment.length);
+    
+    // Call the actual comparison function
+    const comparisonResults = compareEquipmentWithSubsystems(existingP6Data, newEquipmentData);
+    
+    setProcessingStage('assigning_codes', 70, 'Assigning WBS codes to new equipment...');
+    
+    // Set comparison results in store
+    const storeResults = {
+      added: comparisonResults.equipment.new,
+      removed: comparisonResults.equipment.removed,
+      existing: comparisonResults.equipment.existing,
+      modified: []
+    };
+    setComparisonResults(storeResults);
+    
+    // Smart WBS code assignment will be handled by enhanced lib/wbsGenerator.js
+    // For now, store the comparison results
+    
+    setProcessingStage('building_tree', 90, 'Building combined visualization...');
+    
+    // Build integrated structure (existing + new with flags)
+    if (comparisonResults.integrated_structure) {
+      setMissingEquipmentCombinedWBS(comparisonResults.integrated_structure);
+    }
+    
+    // Prepare export data (new items only)
+    if (comparisonResults.export_ready) {
+      setMissingEquipmentExportData(comparisonResults.export_ready);
+    }
+    
+    setProcessingStage('complete', 100, 'Missing equipment processed successfully!');
+    setSuccess(`Equipment comparison completed! Found ${storeResults.added.length} new equipment items.`);
+    
+    return true;
+    
+  } catch (error) {
+    console.error('Missing equipment processing error:', error);
+    setProcessingStage('error', 0, error.message);
+    setError(`Failed to process missing equipment: ${error.message}`);
+    return false;
+  }
+},
 
   // ENHANCED: Missing Equipment Actions
   setMissingEquipmentExistingProject: (project) => set((state) => ({
