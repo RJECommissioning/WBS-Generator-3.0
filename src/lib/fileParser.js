@@ -249,7 +249,7 @@ const parseExcelFile = (fileBuffer, filename) => {
       }
       
          // Process the equipment data
-    processData(equipment, headers)
+    processEquipmentData(equipment, headers)
       .then(result => {
         resolve({
           hasData: result.hasData,
@@ -314,7 +314,7 @@ export const parseCSVEquipmentList = (csvContent) => {
               throw new Error('No valid equipment data found in CSV file');
             }
 
-            processData(equipment, results.meta.fields || [])
+            processEquipmentData(equipment, results.meta.fields || [])
               .then(result => {
                 console.log('CSV processing complete:', result);
                 resolve({
@@ -346,7 +346,7 @@ export const parseCSVEquipmentList = (csvContent) => {
 };
 
 // Shared data processing function with enhanced logging
-const processData = (equipment, originalHeaders) => {
+const processEquipmentData = (equipment, originalHeaders) => {
   return new Promise((resolve, reject) => {
     try {
       console.log('=== PROCESSING EQUIPMENT DATA ===');
