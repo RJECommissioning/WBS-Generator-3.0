@@ -20,7 +20,7 @@ const MissingEquipment = () => {
       combinedWBS,
       exportData
     },
-    // Upload states - Updated for P6 paste
+    // Upload states
     uploads: {
       p6_paste,
       equipment_list
@@ -39,14 +39,14 @@ const MissingEquipment = () => {
     setError,
     setSuccess,
     clearMessages,
-    processMissingEquipment,
     setFileUpload
   } = useProjectStore();
 
-const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(1);
   const [debugInfo, setDebugInfo] = useState('');
+  const [equipmentFileData, setEquipmentFileData] = useState(null); // Local state for equipment data
 
-  // Debug logging helper - MOVED UP SO IT'S AVAILABLE IN USEEFFECT
+  // Debug logging helper
   const addDebugInfo = (message) => {
     console.log('[DEBUG]', message);
     setDebugInfo(prev => prev + '\n' + `[${new Date().toLocaleTimeString()}] ${message}`);
@@ -58,48 +58,17 @@ const [currentStep, setCurrentStep] = useState(1);
     resetMissingEquipment();
     clearMessages();
     setCurrentStep(1);
+    setEquipmentFileData(null);
   }, [resetMissingEquipment, clearMessages]);
 
-  // AUTO-TRIGGER: Start comparison when both P6 data AND equipment file are ready
-  useEffect(() => {
-    console.log('[AUTO-TRIGGER] Checking conditions...');
-    console.log('P6 data ready:', existingProject?.equipmentCodes?.length > 0);
-    console.log('Equipment file status:', equipment_list?.status);
-    console.log('Equipment file data:', equipment_list?.data?.length);
+  // Check if both files are ready for processing
+  const canProcessEquipment = () => {
+    const p6Ready = existingProject?.equipmentCodes?.length > 0;
+    const equipmentReady = equipmentFileData && equipmentFileData.length > 0;
     
-    // Check if both conditions are met
-    const p6DataReady = existingProject?.equipmentCodes?.length > 0;
-    const equipmentFileReady = equipment_list?.status === 'success' && 
-                              equipment_list?.data?.length > 0;
-    
-    if (p6DataReady && equipmentFileReady) {
-      console.log('[AUTO-TRIGGER] Both conditions met - starting comparison!');
-      addDebugInfo('AUTO-TRIGGER: Both conditions met - starting comparison!');
-      
-      // Start the comparison process automatically
-      const triggerComparison = async () => {
-        try {
-          const success = await processMissingEquipment(equipment_list.file);
-          if (success) {
-            console.log('[AUTO-TRIGGER] Comparison completed successfully!');
-            addDebugInfo('AUTO-TRIGGER: Comparison completed successfully!');
-          }
-        } catch (error) {
-          console.error('[AUTO-TRIGGER] Comparison failed:', error);
-          addDebugInfo(`AUTO-TRIGGER: Comparison failed: ${error.message}`);
-        }
-      };
-      
-      triggerComparison();
-    }
-  }, [
-    existingProject?.equipmentCodes,
-    equipment_list?.status,
-    equipment_list?.data,
-    equipment_list?.file,
-    processMissingEquipment,
-    addDebugInfo
-  ]);
+    addDebugInfo(`Can process check: P6 ready: ${p6Ready}, Equipment ready: ${equipmentReady}`);
+    return p6Ready && equipmentReady;
+  };
 
   // Step 1: Handle P6 paste data processing
   const handleP6DataPasted = async (pasteContent) => {
@@ -109,18 +78,19 @@ const [currentStep, setCurrentStep] = useState(1);
       
       clearMessages();
       setProcessingStage('parsing', 10, 'Parsing P6 WBS data...');
-      console.log('Processing P6 paste data...');
+      
       const parseResult = await processP6Paste(pasteContent);
-      // FIXED: Log parseResult directly since existingProject state is async
+      
       console.log('P6 parsing successful:', {
         dataLength: parseResult.dataLength,
         projectName: parseResult.projectInfo?.projectName,
-        equipmentCodes: parseResult.equipmentCodes?.length || 0,
-        equipmentMapping: parseResult.equipmentMapping ? Object.keys(parseResult.equipmentMapping).length : 0
+        equipmentCodes: parseResult.equipmentCodes?.length || 0
       });
+      
       addDebugInfo(`P6 parsing successful! Found ${parseResult.dataLength} WBS items`);
       addDebugInfo(`Project: ${parseResult.projectInfo?.projectName || 'Unknown'}`);
       addDebugInfo(`Equipment codes extracted: ${parseResult.equipmentCodes?.length || 0}`);
+      
       setProcessingStage('complete', 100, 'P6 data processed successfully!');
       setSuccess(`P6 data processed successfully! Found ${parseResult.dataLength} WBS items.`);
       
@@ -135,7 +105,7 @@ const [currentStep, setCurrentStep] = useState(1);
     }
   };
   
-  // Step 2: Handle equipment file upload and processing
+  // Step 2: Handle equipment file upload 
   const handleEquipmentFileUpload = async (result) => {
     const file = result.file;
     try {
@@ -144,13 +114,6 @@ const [currentStep, setCurrentStep] = useState(1);
       
       clearMessages();
       setProcessingStage('parsing', 10, 'Parsing equipment file...');
-
-      // Set file upload state
-      setFileUpload('equipment_list', {
-        file: file,
-        status: 'uploading',
-        error: null
-      });
 
       console.log('Parsing equipment file...');
       const parseResult = await parseFile(file);
@@ -170,7 +133,10 @@ const [currentStep, setCurrentStep] = useState(1);
 
       addDebugInfo(`Equipment parsing successful! Found ${parseResult.dataLength} equipment items`);
 
-      // Update file upload state
+      // Store equipment data locally (not in the complex store state)
+      setEquipmentFileData(parseResult.data);
+      
+      // Update store state for UI display
       setFileUpload('equipment_list', {
         file: file,
         status: 'success',
@@ -178,16 +144,17 @@ const [currentStep, setCurrentStep] = useState(1);
         data: parseResult.data
       });
 
-      setProcessingStage('processing', 50, 'Processing new equipment...');
-
-      // FIXED: Automatically start WBS processing with better error handling
-      await processNewEquipment(parseResult.data);
+      setProcessingStage('complete', 100, 'Equipment file processed successfully!');
+      setSuccess(`Equipment file processed successfully! Found ${parseResult.dataLength} equipment items.`);
+      
+      addDebugInfo('Equipment file processing completed - ready for comparison');
       
     } catch (error) {
       console.error('Equipment parsing failed:', error);
       addDebugInfo(`Equipment parsing failed: ${error.message}`);
 
       setError(`Equipment parsing failed: ${error.message}`);
+      setEquipmentFileData(null);
       setFileUpload('equipment_list', {
         file: file,
         status: 'error',
@@ -197,44 +164,53 @@ const [currentStep, setCurrentStep] = useState(1);
     }
   };
 
-  // FIXED: Step 3 - Process new equipment using enhanced comparison logic
-  const processNewEquipment = async (equipmentList) => {
+  // Step 3: Manual equipment processing when user clicks "Process Equipment"
+  const handleProcessEquipment = async () => {
     try {
-      console.log('=== STARTING ENHANCED NEW EQUIPMENT PROCESSING ===');
-      addDebugInfo('Starting enhanced equipment processing with subsystem support');
+      console.log('=== STARTING MANUAL EQUIPMENT PROCESSING ===');
+      addDebugInfo('Starting manual equipment processing with 3-tier priority logic');
       
       clearMessages();
-      setProcessingStage('comparing', 60, 'Comparing equipment with existing project...');
+      setProcessingStage('comparing', 20, 'Comparing equipment with existing project...');
 
-      // FIXED: Validate that we have existing project data
+      // Validate that we have both datasets
       if (!existingProject || !existingProject.wbsStructure || existingProject.wbsStructure.length === 0) {
         throw new Error('No existing project data found. Please ensure P6 data was processed correctly.');
       }
 
-      console.log('Existing project validation:', {
+      if (!equipmentFileData || equipmentFileData.length === 0) {
+        throw new Error('No equipment data found. Please ensure equipment file was uploaded successfully.');
+      }
+
+      console.log('Processing validation passed:', {
         wbsItems: existingProject.wbsStructure.length,
         equipmentCodes: existingProject.equipmentCodes?.length || 0,
-        equipmentMapping: existingProject.equipmentMapping ? Object.keys(existingProject.equipmentMapping).length : 0
+        newEquipmentItems: equipmentFileData.length
       });
 
-      // FIXED: Use enhanced comparison function
-      console.log('Using enhanced comparison logic with subsystem support...');
-      const comparisonResult = await compareEquipmentLists(existingProject, equipmentList);
+      addDebugInfo(`Processing validation passed:`);
+      addDebugInfo(`- P6 WBS items: ${existingProject.wbsStructure.length}`);
+      addDebugInfo(`- P6 equipment codes: ${existingProject.equipmentCodes?.length || 0}`);
+      addDebugInfo(`- New equipment items: ${equipmentFileData.length}`);
+
+      setProcessingStage('comparing', 40, 'Running 3-tier priority comparison...');
+
+      // Use the new 3-tier priority comparison logic
+      console.log('Using 3-tier priority comparison logic...');
+      const comparisonResult = await compareEquipmentLists(existingProject, equipmentFileData);
       
-      console.log('Enhanced comparison completed:', {
+      console.log('3-tier priority comparison completed:', {
         newEquipment: comparisonResult.comparison.added.length,
         existingEquipment: comparisonResult.comparison.existing.length,
-        newSubsystems: comparisonResult.subsystems?.new?.length || 0,
-        existingSubsystems: comparisonResult.subsystems?.existing?.length || 0,
-        newWBSItems: comparisonResult.wbs_assignment?.new_wbs_items?.length || 0
+        newWBSItems: comparisonResult.wbs_assignment?.new_wbs_items?.length || 0,
+        exportReady: comparisonResult.export_ready?.length || 0
       });
 
-      addDebugInfo(`Enhanced comparison completed:`);
+      addDebugInfo(`3-tier priority comparison completed:`);
       addDebugInfo(`- New equipment found: ${comparisonResult.comparison.added.length} items`);
       addDebugInfo(`- Existing equipment: ${comparisonResult.comparison.existing.length} items`);
-      addDebugInfo(`- New subsystems: ${comparisonResult.subsystems?.new?.length || 0}`);
-      addDebugInfo(`- Existing subsystems: ${comparisonResult.subsystems?.existing?.length || 0}`);
       addDebugInfo(`- New WBS items created: ${comparisonResult.wbs_assignment?.new_wbs_items?.length || 0}`);
+      addDebugInfo(`- Export-ready items: ${comparisonResult.export_ready?.length || 0}`);
 
       if (comparisonResult.comparison.added.length === 0) {
         const message = 'No new equipment found. All equipment items already exist in the project.';
@@ -246,36 +222,35 @@ const [currentStep, setCurrentStep] = useState(1);
 
       setProcessingStage('building', 80, 'Building combined project structure...');
 
-      // FIXED: Use the enhanced results from new comparison
+      // Use the enhanced results from new comparison
       const combinedWBS = comparisonResult.integrated_structure;
       const exportData = comparisonResult.export_ready;
 
-      console.log('Enhanced integration completed:', {
+      console.log('Integration completed:', {
         combinedItems: combinedWBS.length,
-        exportItems: exportData.length,
-        summary: comparisonResult.summary
+        exportItems: exportData.length
       });
 
-      addDebugInfo(`Enhanced integration completed:`);
+      addDebugInfo(`Integration completed:`);
       addDebugInfo(`- Combined WBS items: ${combinedWBS.length}`);
       addDebugInfo(`- Export-ready items: ${exportData.length}`);
       
-      // FIXED: Update state with enhanced results
+      // Update state with results
       setMissingEquipmentCombinedWBS(combinedWBS);
       setMissingEquipmentExportData(exportData);
       
       setProcessingStage('complete', 100, 'Processing complete!');
-      setSuccess(`Successfully processed ${comparisonResult.comparison.added.length} new equipment items across ${comparisonResult.subsystems?.new?.length || 0} new subsystems!`);
+      setSuccess(`Successfully processed ${comparisonResult.comparison.added.length} new equipment items!`);
       
-      addDebugInfo('Enhanced processing completed successfully!');
+      addDebugInfo('Manual processing completed successfully!');
       addDebugInfo(`Final structure: ${existingProject.wbsStructure.length} existing + ${exportData.length} new = ${combinedWBS.length} total`);
       
       setCurrentStep(3); // Move to visualization step
 
     } catch (error) {
-      console.error('Enhanced equipment processing failed:', error);
-      addDebugInfo(`Enhanced processing failed: ${error.message}`);
-      setError(`Enhanced processing failed: ${error.message}`);
+      console.error('Manual equipment processing failed:', error);
+      addDebugInfo(`Manual processing failed: ${error.message}`);
+      setError(`Processing failed: ${error.message}`);
       setProcessingStage('error', 0, error.message);
     }
   };
@@ -308,6 +283,7 @@ const [currentStep, setCurrentStep] = useState(1);
     addDebugInfo('Resetting all state...');
     resetMissingEquipment();
     setCurrentStep(1);
+    setEquipmentFileData(null);
     clearMessages();
     setDebugInfo('');
   };
@@ -468,9 +444,9 @@ const [currentStep, setCurrentStep] = useState(1);
                 <div className="text-sm text-blue-700">
                   <p className="mb-2">Upload your complete equipment list (existing + new equipment). Required columns:</p>
                   <ul className="list-disc list-inside space-y-1">
-                    <li><strong>Subsystem</strong> - Equipment subsystem (S1, S2, S3, etc.)</li>
-                    <li><strong>Equipment Number</strong> - Equipment code (+UH101, -F102, etc.)</li>
-                    <li><strong>Parent Equipment Number</strong> - Parent equipment (if applicable)</li>
+                    <li><strong>Subsystem</strong> - Equipment subsystem (33kV Switchroom 1 - +Z01, etc.)</li>
+                    <li><strong>Equipment Number</strong> - Equipment code (-XC11, ESS-FIRE-001, etc.)</li>
+                    <li><strong>Parent Equipment Number</strong> - Parent equipment (if applicable, "-" if no parent)</li>
                     <li><strong>Description</strong> - Equipment description</li>
                     <li><strong>Commissioning (Y/N)</strong> - Commissioning status</li>
                   </ul>
@@ -479,23 +455,57 @@ const [currentStep, setCurrentStep] = useState(1);
             </div>
 
             <FileUpload
+              uploadType="equipment_list"
               accept=".csv,.xlsx,.xls"
-              onFileSelect={handleEquipmentFileUpload}
-              isProcessing={processing.stage && processing.stage !== 'complete'}
-              label="Drop your equipment list here or click to browse"
-              currentFile={equipment_list.file}
-              status={equipment_list.status}
-              error={equipment_list.error}
+              onFileProcessed={handleEquipmentFileUpload}
+              disabled={processing.stage && processing.stage !== 'complete'}
+              title="Upload Equipment List"
+              description="Drop your equipment list here or click to browse"
             />
 
             {/* Equipment Processing Status */}
-            {equipment_list.status === 'success' && equipment_list.data?.length > 0 && (
+            {equipment_list.status === 'success' && equipmentFileData?.length > 0 && (
               <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <div className="font-medium text-green-800">
-                  ✅ Equipment File Processed Successfully
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-green-800">
+                      ✅ Equipment File Processed Successfully
+                    </div>
+                    <div className="text-green-700 text-sm mt-1">
+                      Found {equipmentFileData.length} equipment items - ready for comparison
+                    </div>
+                  </div>
+                  {canProcessEquipment() && (
+                    <button
+                      onClick={handleProcessEquipment}
+                      disabled={processing.stage && processing.stage !== 'complete'}
+                      className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:bg-gray-400"
+                    >
+                      🚀 Process Equipment →
+                    </button>
+                  )}
                 </div>
-                <div className="text-green-700 text-sm mt-1">
-                  Found {equipment_list.data.length} equipment items - processing comparison...
+              </div>
+            )}
+
+            {/* Ready to Process Indicator */}
+            {canProcessEquipment() && !processing.stage && (
+              <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-yellow-800">
+                      🔄 Ready for Processing
+                    </div>
+                    <div className="text-yellow-700 text-sm mt-1">
+                      Both P6 data and equipment list are ready. Click "Process Equipment" to start 3-tier priority comparison.
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleProcessEquipment}
+                    className="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700"
+                  >
+                    🚀 Process Equipment →
+                  </button>
                 </div>
               </div>
             )}
