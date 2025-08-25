@@ -28,6 +28,17 @@ const categorizeEquipmentItem = (equipmentNumber) => {
   return { id: '99', name: 'Unrecognised Equipment' };
 };
 
+// HELPER: Get WBS code for category (maps category ID to WBS code)
+const getWBSCodeForCategory = (categoryId) => {
+  // Map category IDs to their WBS codes
+  const categoryWBSMap = {
+    '01': '1068', '02': '1575', '03': '1576', '04': '1577', '05': '1578',
+    '06': '1592', '07': '1580', '08': '1075', '09': '1076', '10': '1281',
+    '99': '1067'
+  };
+  return categoryWBSMap[categoryId] || '1067'; // Default to 99 if not found
+};
+
 // Main function for missing equipment comparison
 export const compareEquipmentLists = async (existingProject, newEquipmentList, projectSettings = {}) => {
   try {
@@ -318,7 +329,7 @@ const findSubsystemInP6 = (equipment, subsystemCode, existingProject) => {
     const projectWBSCode = extractProjectCodeFromP6(existingProject);
     console.log(`    Found existing subsystem at WBS code: ${projectWBSCode}`);
     
-    const equipmentCategory = categorizeEquipment(equipment.equipment_number);
+    const equipmentCategory = categorizeEquipmentItem(equipment.equipment_number);
     console.log(`    Equipment categorized as: ${equipmentCategory.id} | ${equipmentCategory.name}`);
     
     // Look for category 99 in existing structure
@@ -384,7 +395,7 @@ const findSubsystemInP6 = (equipment, subsystemCode, existingProject) => {
   console.log(`    Found existing subsystem: ${subsystemWBSItem.wbs_name}`);
   console.log(`    Subsystem WBS code: ${subsystemWBSItem.wbs_code}`);
   
-  // Categorize the equipment
+  // Categorize the equipment  
   const equipmentCategory = categorizeEquipmentItem(equipment.equipment_number);
   console.log(`    Equipment categorized as: ${equipmentCategory.id} | ${equipmentCategory.name}`);
   
@@ -451,7 +462,7 @@ const createNewSubsystemStructure = (equipment, subsystemCode, createdSubsystems
     const existingSubsystem = createdSubsystems.get(subsystemKey);
     
     // Find the appropriate category for this equipment
-    const equipmentCategory = categorizeEquipment(equipment.equipment_number);
+    const equipmentCategory = categorizeEquipmentItem(equipment.equipment_number);
     const categoryWBSCode = existingSubsystem.categories[equipmentCategory.id];
     
     // Count existing equipment in this category from our created items
@@ -506,7 +517,6 @@ const createNewSubsystemStructure = (equipment, subsystemCode, createdSubsystems
   const categories = {};
   const equipmentCount = {};
   
-  // Create all categories from EQUIPMENT_CATEGORIES constant
   // Create all categories from EQUIPMENT_CATEGORIES constant
   Object.entries(EQUIPMENT_CATEGORIES).forEach(([categoryId, categoryName]) => {
     const category = { id: categoryId, name: categoryName, wbs_code: getWBSCodeForCategory(categoryId) };
