@@ -87,7 +87,9 @@ export const compareEquipmentLists = async (existingProject, newEquipmentList, p
     
     return {
       comparison: {
-        ...comparison,
+        added: comparison.newEquipment,        // ← Change this
+        existing: comparison.existingEquipment, // ← Change this  
+        removed: comparison.removedEquipment,   // ← Change this
         modified: []
       },
       wbs_assignment: {
