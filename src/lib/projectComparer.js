@@ -1,8 +1,32 @@
 // src/lib/projectComparer.js
 // Fixed version with proper 3-tier priority logic and complete category structure
 
-import { categorizeEquipment } from '../constants/index.js';
-import { CATEGORIES } from '../constants/index.js';
+import { EQUIPMENT_CATEGORIES, EQUIPMENT_PATTERNS } from '../constants/index.js';
+
+// HELPER: Simple equipment categorization for individual items
+const categorizeEquipmentItem = (equipmentNumber) => {
+  if (!equipmentNumber || typeof equipmentNumber !== 'string') {
+    return { id: '99', name: 'Unrecognised Equipment' };
+  }
+  
+  const cleanCode = equipmentNumber.toUpperCase().trim();
+  
+  // Test against equipment patterns
+  for (const [categoryId, patterns] of Object.entries(EQUIPMENT_PATTERNS)) {
+    for (const pattern of patterns) {
+      const regex = pattern.pattern || pattern;
+      if (regex.test && regex.test(cleanCode)) {
+        return {
+          id: categoryId,
+          name: EQUIPMENT_CATEGORIES[categoryId] || 'Unrecognised Equipment'
+        };
+      }
+    }
+  }
+  
+  // Default to unrecognized
+  return { id: '99', name: 'Unrecognised Equipment' };
+};
 
 // Main function for missing equipment comparison
 export const compareEquipmentLists = async (existingProject, newEquipmentList, projectSettings = {}) => {
@@ -361,7 +385,7 @@ const findSubsystemInP6 = (equipment, subsystemCode, existingProject) => {
   console.log(`    Subsystem WBS code: ${subsystemWBSItem.wbs_code}`);
   
   // Categorize the equipment
-  const equipmentCategory = categorizeEquipment(equipment.equipment_number);
+  const equipmentCategory = categorizeEquipmentItem(equipment.equipment_number);
   console.log(`    Equipment categorized as: ${equipmentCategory.id} | ${equipmentCategory.name}`);
   
   // Find the category within this subsystem
@@ -482,15 +506,17 @@ const createNewSubsystemStructure = (equipment, subsystemCode, createdSubsystems
   const categories = {};
   const equipmentCount = {};
   
-  // Create all categories from CATEGORIES constant
-  Object.values(CATEGORIES).forEach(category => {
+  // Create all categories from EQUIPMENT_CATEGORIES constant
+  // Create all categories from EQUIPMENT_CATEGORIES constant
+  Object.entries(EQUIPMENT_CATEGORIES).forEach(([categoryId, categoryName]) => {
+    const category = { id: categoryId, name: categoryName, wbs_code: getWBSCodeForCategory(categoryId) };
     const categoryWBSCode = `${newSubsystemWBSCode}.${category.wbs_code}`;
-    const categoryName = `${category.id} | ${category.name}`;
+    const categoryNameFormatted = `${category.id} | ${category.name}`;
     
     newWBSItems.push({
       wbs_code: categoryWBSCode,
       parent_wbs_code: newSubsystemWBSCode,
-      wbs_name: categoryName,
+      wbs_name: categoryNameFormatted,
       level: newSubsystemWBSCode.split('.').length + 1,
       is_new: true,
       is_category: true,
@@ -502,7 +528,7 @@ const createNewSubsystemStructure = (equipment, subsystemCode, createdSubsystems
   });
   
   // 3. Place the current equipment in the appropriate category
-  const equipmentCategory = categorizeEquipment(equipment.equipment_number);
+  const equipmentCategory = categorizeEquipmentItem(equipment.equipment_number);
   const categoryWBSCode = categories[equipmentCategory.id];
   const equipmentWBSCode = `${categoryWBSCode}.1`;
   
