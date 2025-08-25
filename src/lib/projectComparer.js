@@ -1,550 +1,569 @@
 import { arrayHelpers, stringHelpers, wbsHelpers } from '../utils';
 import { categorizeEquipment } from './equipmentProcessor';
-import { generateWBSStructure } from './wbsGenerator';
-import { WBS_LEVEL_COLORS, BRAND_COLORS } from '../constants';
+import { EQUIPMENT_CATEGORIES, WBS_LEVEL_COLORS, BRAND_COLORS } from '../constants';
 
 /**
- * Project Comparer - COMPLETE MISSING EQUIPMENT IMPLEMENTATION
- * Compares equipment lists to identify changes and handles multiple subsystems
+ * CORRECTED Project Comparer - 3-Tier Priority Logic Implementation
+ * 
+ * Priority 1: Parent-Child Relationships (HIGHEST)
+ * Priority 2: Existing Subsystem Check (MEDIUM)  
+ * Priority 3: New Subsystem Creation (LOWEST)
  */
 
-// ENHANCED: Complete comparison function with subsystem support
-export const compareEquipmentWithSubsystems = (existingP6Data, newEquipmentData) => {
-  console.log('=== ENHANCED EQUIPMENT & SUBSYSTEM COMPARISON ===');
-  
-  const { equipmentCodes: existingEquipment, existingSubsystems } = existingP6Data;
-  const { equipment: newEquipmentList, subsystemMapping: newSubsystems } = newEquipmentData;
-  
-  console.log('Existing P6 equipment:', existingEquipment.length);
-  console.log('Existing P6 subsystems:', Object.keys(existingSubsystems));
-  console.log('New equipment list:', newEquipmentList.length);
-  console.log('New subsystems detected:', Object.keys(newSubsystems));
-  
-  // Step 1: Find equipment differences
-  const equipmentComparison = {
-    existing: [], // Equipment that exists in both P6 and new list
-    new: [],      // Equipment in new list but not in P6
-    removed: []   // Equipment in P6 but not in new list (edge case)
-  };
-  
-  newEquipmentList.forEach(item => {
-    const equipmentCode = item.equipment_number;
-    if (existingEquipment.includes(equipmentCode)) {
-      equipmentComparison.existing.push(item);
-    } else {
-      equipmentComparison.new.push(item);
-    }
-  });
-  
-  // Find removed equipment (in P6 but not in new list)
-  existingEquipment.forEach(code => {
-    const existsInNewList = newEquipmentList.some(item => item.equipment_number === code);
-    if (!existsInNewList) {
-      equipmentComparison.removed.push(code);
-    }
-  });
-  
-  // Step 2: Find subsystem differences
-  const subsystemComparison = {
-    existing: [], // Subsystems that exist in both P6 and new equipment
-    new: []       // Subsystems in new equipment but not in P6
-  };
-  
-  Object.entries(newSubsystems).forEach(([subsystemKey, subsystemData]) => {
-    const subsystemId = `S${subsystemData.index}`; // S1, S2, S3, etc.
-    
-    if (existingSubsystems[subsystemId]) {
-      subsystemComparison.existing.push({
-        id: subsystemId,
-        key: subsystemKey,
-        data: subsystemData,
-        existingWBSCode: existingSubsystems[subsystemId].wbs_code
-      });
-    } else {
-      subsystemComparison.new.push({
-        id: subsystemId,
-        key: subsystemKey,
-        data: subsystemData
-      });
-    }
-  });
-  
-  // Step 3: Categorize new equipment by subsystem type
-  const newEquipmentBySubsystemType = {
-    existingSubsystems: [], // New equipment going into existing subsystems (S1)
-    newSubsystems: []       // Equipment going into entirely new subsystems (S2-S6)
-  };
-  
-  equipmentComparison.new.forEach(item => {
-    const itemSubsystem = item.subsystem;
-    const subsystemData = newSubsystems[itemSubsystem];
-    
-    if (subsystemData) {
-      const subsystemId = `S${subsystemData.index}`;
-      
-      if (existingSubsystems[subsystemId]) {
-        // Equipment for existing subsystem
-        newEquipmentBySubsystemType.existingSubsystems.push({
-          ...item,
-          targetSubsystem: subsystemId,
-          existingWBSCode: existingSubsystems[subsystemId].wbs_code
-        });
-      } else {
-        // Equipment for new subsystem  
-        newEquipmentBySubsystemType.newSubsystems.push({
-          ...item,
-          targetSubsystem: subsystemId,
-          subsystemData: subsystemData
-        });
-      }
-    }
-  });
-  
-  const results = {
-    equipment: equipmentComparison,
-    subsystems: subsystemComparison,
-    newEquipmentByType: newEquipmentBySubsystemType,
-    summary: {
-      total_existing_equipment: equipmentComparison.existing.length,
-      total_new_equipment: equipmentComparison.new.length,
-      total_removed_equipment: equipmentComparison.removed.length,
-      existing_subsystems: subsystemComparison.existing.length,
-      new_subsystems: subsystemComparison.new.length,
-      new_equipment_for_existing_subsystems: newEquipmentBySubsystemType.existingSubsystems.length,
-      new_equipment_for_new_subsystems: newEquipmentBySubsystemType.newSubsystems.length
-    }
-  };
-  
-  console.log('=== COMPARISON RESULTS ===');
-  console.log('Equipment Summary:', results.summary);
-  console.log('New Subsystems:', subsystemComparison.new.map(s => s.id));
-  
-  return results;
-};
-
-// ENHANCED: Smart WBS assignment for Missing Equipment functionality
-export const assignSmartWBSCodes = (comparisonResults, existingP6Data, processedEquipmentData) => {
-  console.log('=== SMART WBS CODE ASSIGNMENT ===');
-  
-  const { equipmentMapping: existingEquipmentMapping, existingSubsystems } = existingP6Data;
-  const { newEquipmentByType } = comparisonResults;
-  const finalWBSStructure = [];
-  
-  // Step 1: Analyze existing project structure to understand numbering patterns
-  const projectStructure = analyzeProjectStructure(existingP6Data);
-  console.log('Project structure analysis:', projectStructure);
-  
-  // Step 2: Handle new equipment in existing subsystems (S1)
-  if (newEquipmentByType.existingSubsystems.length > 0) {
-    console.log(`Processing ${newEquipmentByType.existingSubsystems.length} new equipment items for existing subsystems`);
-    
-    const existingSubsystemWBS = assignToExistingSubsystems(
-      newEquipmentByType.existingSubsystems,
-      existingEquipmentMapping,
-      existingSubsystems,
-      projectStructure
-    );
-    
-    finalWBSStructure.push(...existingSubsystemWBS);
-  }
-  
-  // Step 3: Handle equipment in entirely new subsystems (S2, S3, S4, S5, S6)
-  if (newEquipmentByType.newSubsystems.length > 0) {
-    console.log(`Processing ${newEquipmentByType.newSubsystems.length} equipment items for new subsystems`);
-    
-    const newSubsystemWBS = createNewSubsystemStructures(
-      newEquipmentByType.newSubsystems,
-      comparisonResults.subsystems.new,
-      projectStructure,
-      processedEquipmentData
-    );
-    
-    finalWBSStructure.push(...newSubsystemWBS);
-  }
-  
-  console.log(`Total new WBS items created: ${finalWBSStructure.length}`);
-  return finalWBSStructure;
-};
-
-// Analyze existing project structure to understand numbering patterns
-const analyzeProjectStructure = (existingP6Data) => {
-  const { existingSubsystems } = existingP6Data;
-  
-  // Extract project root and numbering pattern
-  const subsystemWBSCodes = Object.values(existingSubsystems).map(s => s.wbs_code);
-  
-  if (subsystemWBSCodes.length === 0) {
-    // Fallback if no subsystems found
-    return {
-      projectRoot: '1',
-      nextSubsystemCode: '1.2',
-      numberingPattern: 'sequential'
-    };
-  }
-  
-  // Analyze existing pattern (e.g., 5737.1064 for S1)
-  const firstSubsystem = subsystemWBSCodes[0]; // "5737.1064"
-  const parts = firstSubsystem.split('.');
-  
-  let projectRoot, nextSubsystemCode;
-  
-  if (parts.length >= 2) {
-    projectRoot = parts[0]; // "5737"
-    const subsystemLevel = parseInt(parts[1]); // 1064
-    nextSubsystemCode = `${projectRoot}.${subsystemLevel + 1}`; // "5737.1065"
-  } else {
-    projectRoot = '1';
-    nextSubsystemCode = '1.2';
-  }
-  
-  return {
-    projectRoot,
-    nextSubsystemCode,
-    numberingPattern: 'incremental',
-    existingSubsystems: Object.keys(existingSubsystems)
-  };
-};
-
-// Assign WBS codes to equipment in existing subsystems
-const assignToExistingSubsystems = (equipmentList, existingEquipmentMapping, existingSubsystems, projectStructure) => {
-  console.log('Assigning codes to equipment in existing subsystems...');
-  
-  const wbsItems = [];
-  
-  // Group equipment by category for smart assignment
-  const equipmentByCategory = {};
-  equipmentList.forEach(item => {
-    const category = item.category;
-    if (!equipmentByCategory[category]) {
-      equipmentByCategory[category] = [];
-    }
-    equipmentByCategory[category].push(item);
-  });
-  
-  // For each category, find existing equipment and continue the pattern
-  Object.entries(equipmentByCategory).forEach(([categoryId, equipment]) => {
-    // Find existing equipment in this category
-    const existingInCategory = Object.entries(existingEquipmentMapping)
-      .filter(([code, data]) => {
-        // Determine category of existing equipment using same logic as equipment processor
-        return determineEquipmentCategoryFromCode(code) === categoryId;
-      });
-    
-    if (existingInCategory.length > 0) {
-      // Continue existing pattern
-      const nextWBSCode = findNextAvailableWBSCode(existingInCategory, categoryId);
-      
-      equipment.forEach((item, index) => {
-        const itemWBSCode = incrementWBSCode(nextWBSCode, index);
-        
-        wbsItems.push({
-          wbs_code: itemWBSCode,
-          parent_wbs_code: getParentWBSCode(itemWBSCode),
-          wbs_name: `${item.equipment_number} | ${item.description}`,
-          equipment_number: item.equipment_number,
-          description: item.description,
-          commissioning_yn: item.commissioning_yn,
-          category: item.category,
-          category_name: item.category_name,
-          level: getWBSLevel(itemWBSCode),
-          is_equipment: true,
-          is_structural: false,
-          subsystem: item.subsystem,
-          isNew: true
-        });
-      });
-    }
-  });
-  
-  return wbsItems;
-};
-
-// Create entire new subsystem structures
-const createNewSubsystemStructures = (equipmentList, newSubsystems, projectStructure, processedEquipmentData) => {
-  console.log('Creating new subsystem structures...');
-  
-  const wbsItems = [];
-  let currentSubsystemCode = projectStructure.nextSubsystemCode;
-  
-  // Create each new subsystem
-  newSubsystems.forEach((subsystemInfo, index) => {
-    const subsystemWBSCode = incrementWBSCode(projectStructure.nextSubsystemCode, index);
-    
-    // Create subsystem header
-    wbsItems.push({
-      wbs_code: subsystemWBSCode,
-      parent_wbs_code: projectStructure.projectRoot,
-      wbs_name: subsystemInfo.data.full_name,
-      equipment_number: null,
-      description: subsystemInfo.data.full_name,
-      commissioning_yn: null,
-      category: null,
-      category_name: null,
-      level: getWBSLevel(subsystemWBSCode),
-      is_equipment: false,
-      is_structural: true,
-      subsystem: subsystemInfo.key,
-      isNew: true
-    });
-    
-    // Create all categories for this subsystem (reuse existing logic)
-    const subsystemEquipment = equipmentList.filter(item => 
-      processedEquipmentData.subsystemMapping[item.subsystem]?.index === parseInt(subsystemInfo.id.replace('S', ''))
-    );
-    
-    // Use existing WBS generator logic but with new subsystem root
-    const categoryWBSItems = createCategoriesForNewSubsystem(
-      subsystemWBSCode,
-      subsystemEquipment,
-      processedEquipmentData
-    );
-    
-    wbsItems.push(...categoryWBSItems);
-  });
-  
-  return wbsItems;
-};
-
-// Helper functions
-const determineEquipmentCategoryFromCode = (equipmentCode) => {
-  // Use same patterns as equipment processor
-  if (/^\+UH\d+/i.test(equipmentCode)) return '02';
-  if (/^\+GB\d+/i.test(equipmentCode)) return '06';
-  if (/^T\d+/i.test(equipmentCode)) return '05';
-  if (/^-F\d+/i.test(equipmentCode)) return '02'; // Child of protection panels
-  if (/^-Y\d+/i.test(equipmentCode)) return '02'; // Child of protection panels
-  if (/^-FM\d+/i.test(equipmentCode)) return '08';
-  // Add more patterns as needed
-  return '99';
-};
-
-const findNextAvailableWBSCode = (existingInCategory, categoryId) => {
-  // Find the highest numbered WBS code in this category
-  const wbsCodes = existingInCategory.map(([code, data]) => data.wbs_code);
-  const highestCode = wbsCodes.sort().pop();
-  
-  // Increment to get next available
-  return incrementWBSCode(highestCode, 1);
-};
-
-const incrementWBSCode = (baseCode, increment) => {
-  const parts = baseCode.split('.');
-  const lastPart = parseInt(parts[parts.length - 1]) + increment;
-  return parts.slice(0, -1).concat([lastPart]).join('.');
-};
-
-const getParentWBSCode = (wbsCode) => {
-  const parts = wbsCode.split('.');
-  return parts.slice(0, -1).join('.');
-};
-
-const getWBSLevel = (wbsCode) => {
-  return wbsCode.split('.').length;
-};
-
-const createCategoriesForNewSubsystem = (subsystemWBSCode, equipment, processedEquipmentData) => {
-  // This would reuse existing WBS generator logic but adapted for a single subsystem
-  // Create all 11 categories, then add equipment to appropriate categories
-  const categoryItems = [];
-  
-  // Create categories 01-99 for this subsystem
-  Object.entries(processedEquipmentData.categoryStats || {}).forEach(([categoryId, stats], index) => {
-    const categoryWBSCode = `${subsystemWBSCode}.${index + 1}`;
-    
-    // Create category structure
-    categoryItems.push({
-      wbs_code: categoryWBSCode,
-      parent_wbs_code: subsystemWBSCode,
-      wbs_name: `${categoryId} | ${stats.name}`,
-      equipment_number: null,
-      description: stats.name,
-      commissioning_yn: null,
-      category: categoryId,
-      category_name: stats.name,
-      level: getWBSLevel(categoryWBSCode),
-      is_equipment: false,
-      is_structural: true,
-      isNew: true
-    });
-    
-    // Add equipment for this category
-    const categoryEquipment = equipment.filter(item => item.category === categoryId);
-    categoryEquipment.forEach((item, equipIndex) => {
-      const equipmentWBSCode = `${categoryWBSCode}.${equipIndex + 1}`;
-      
-      categoryItems.push({
-        wbs_code: equipmentWBSCode,
-        parent_wbs_code: categoryWBSCode,
-        wbs_name: `${item.equipment_number} | ${item.description}`,
-        equipment_number: item.equipment_number,
-        description: item.description,
-        commissioning_yn: item.commissioning_yn,
-        category: item.category,
-        category_name: item.category_name,
-        level: getWBSLevel(equipmentWBSCode),
-        is_equipment: true,
-        is_structural: false,
-        subsystem: item.subsystem,
-        isNew: true
-      });
-    });
-  });
-  
-  return categoryItems;
-};
-
-// MAIN WRAPPER: Updated function that uses the new comparison approach
+// MAIN COMPARISON FUNCTION - Entry point for Missing Equipment
 export const compareEquipmentLists = async (existingProject, updatedEquipmentList) => {
   try {
+    console.log('=== STARTING 3-TIER PRIORITY EQUIPMENT COMPARISON ===');
+    
     if (!existingProject || !updatedEquipmentList) {
       throw new Error('Both existing project and updated equipment list are required');
     }
 
-    console.log('=== ENHANCED EQUIPMENT COMPARISON WITH SUBSYSTEM SUPPORT ===');
-
-    // STEP 1: Process new equipment through categorization first
-    console.log('Processing new equipment through categorization...');
+    // Step 1: Process new equipment through categorization
+    console.log('Step 1: Processing new equipment through categorization...');
     const processedNewEquipment = await categorizeEquipment(updatedEquipmentList);
     
-    // STEP 2: Use the enhanced comparison function
-    const comparisonResults = compareEquipmentWithSubsystems(existingProject, processedNewEquipment);
+    // Step 2: Extract equipment codes from existing P6 data
+    console.log('Step 2: Extracting existing equipment codes from P6...');
+    const existingEquipmentCodes = extractEquipmentCodesFromP6(existingProject);
     
-    // STEP 3: Assign WBS codes to new equipment
-    console.log('Assigning WBS codes to new equipment...');
-    const newWBSItems = assignSmartWBSCodes(comparisonResults, existingProject, processedNewEquipment);
+    // Step 3: Compare equipment lists to find new vs existing
+    console.log('Step 3: Comparing equipment lists...');
+    const comparison = compareEquipmentCodes(existingEquipmentCodes, processedNewEquipment.equipment);
     
-    // STEP 4: Build integrated structure (existing + new)
+    // Step 4: Apply 3-tier priority logic for WBS code assignment
+    console.log('Step 4: Applying 3-tier priority logic for WBS assignment...');
+    const newWBSItems = await assign3TierPriorityWBSCodes(
+      comparison.newEquipment, 
+      existingProject, 
+      processedNewEquipment
+    );
+    
+    // Step 5: Build integrated structure and export data
+    console.log('Step 5: Building integrated structure...');
     const integratedStructure = buildIntegratedWBSStructure(
-      existingProject.wbsStructure || existingProject.wbs_structure,
+      existingProject.wbsStructure || [],
       newWBSItems
     );
     
-    // STEP 5: Prepare export data (new items only)
     const exportData = prepareExportData(newWBSItems);
     
-    // STEP 6: Build final result in expected format
-    const finalResult = {
+    console.log('=== COMPARISON COMPLETE ===');
+    console.log(`New Equipment: ${comparison.newEquipment.length}`);
+    console.log(`Existing Equipment: ${comparison.existingEquipment.length}`);
+    console.log(`New WBS Items Created: ${newWBSItems.length}`);
+    
+    return {
       comparison: {
-        added: comparisonResults.equipment.new,
-        existing: comparisonResults.equipment.existing,
-        removed: comparisonResults.equipment.removed,
+        added: comparison.newEquipment,
+        existing: comparison.existingEquipment,
+        removed: comparison.removedEquipment,
         modified: []
       },
-      subsystems: comparisonResults.subsystems,
       wbs_assignment: {
         new_wbs_items: newWBSItems
       },
       integrated_structure: integratedStructure,
-      summary: comparisonResults.summary,
+      summary: {
+        total_new_equipment: comparison.newEquipment.length,
+        total_existing_equipment: comparison.existingEquipment.length,
+        new_wbs_items: newWBSItems.length
+      },
       export_ready: exportData
     };
 
-    console.log('Enhanced comparison completed:', {
-      newEquipment: finalResult.comparison.added.length,
-      existingEquipment: finalResult.comparison.existing.length,
-      newSubsystems: finalResult.subsystems.new.length,
-      newWBSItems: newWBSItems.length
-    });
-
-    return finalResult;
-
   } catch (error) {
+    console.error('Equipment comparison failed:', error);
     throw new Error(`Equipment comparison failed: ${error.message}`);
   }
 };
 
-// ENHANCED: Extract equipment from existing project structure with better P6 support
-const extractEquipmentFromProject = (existingProject) => {
-  console.log('Extracting equipment from existing project...');
+// HELPER: Extract equipment codes from P6 data
+const extractEquipmentCodesFromP6 = (existingProject) => {
+  console.log('Extracting equipment codes from P6 data...');
   
-  // NEW: Handle enhanced P6 data structure
-  if (existingProject.equipmentCodes && existingProject.equipmentMapping) {
-    console.log('Using enhanced P6 equipment mapping...');
-    return Object.entries(existingProject.equipmentMapping).map(([code, data]) => ({
-      equipment_number: code,
-      description: data.description || '',
-      wbs_code: data.wbs_code,
-      parent_wbs_code: data.parent_wbs_code,
-      level: data.level || 0,
-      existing_wbs_code: data.wbs_code,
-      parent_wbs_code: data.parent_wbs_code
-    }));
+  // Priority: Use equipmentCodes array if available
+  if (existingProject.equipmentCodes && existingProject.equipmentCodes.length > 0) {
+    console.log(`Found ${existingProject.equipmentCodes.length} equipment codes in P6 data`);
+    return existingProject.equipmentCodes;
   }
   
-  // FALLBACK: Extract from WBS structure
-  const wbsStructure = existingProject.wbsStructure || existingProject.wbs_structure || [];
-  
-  return wbsStructure
+  // Fallback: Extract from WBS structure
+  const wbsStructure = existingProject.wbsStructure || [];
+  const extractedCodes = wbsStructure
     .filter(item => item.wbs_name && item.wbs_name.includes('|'))
     .map(item => {
       const parts = item.wbs_name.split('|');
-      const equipmentCode = parts[0] ? parts[0].trim() : '';
-      const description = parts[1] ? parts[1].trim() : '';
-      
-      return {
-        equipment_number: equipmentCode,
-        description: description,
-        wbs_code: item.wbs_code,
-        parent_wbs_code: item.parent_wbs_code,
-        level: item.level || 0,
-        existing_wbs_code: item.wbs_code,
-        parent_wbs_code: item.parent_wbs_code
-      };
-    });
+      return parts[0] ? parts[0].trim() : '';
+    })
+    .filter(code => code !== '');
+  
+  console.log(`Extracted ${extractedCodes.length} equipment codes from WBS structure`);
+  return extractedCodes;
 };
 
-// ENHANCED: Extract subsystems from existing project
-const extractSubsystemsFromProject = (existingProject) => {
-  console.log('Extracting subsystems from existing project...');
+// HELPER: Compare equipment codes to identify new vs existing
+const compareEquipmentCodes = (existingCodes, newEquipmentList) => {
+  console.log('Comparing equipment codes...');
   
-  const subsystems = {};
+  const newEquipment = [];
+  const existingEquipment = [];
+  const removedEquipment = []; // Equipment in P6 but not in new list
   
-  // NEW: Handle enhanced P6 data with existing subsystems
-  if (existingProject.existingSubsystems) {
-    console.log('Using enhanced P6 subsystem data...');
-    return existingProject.existingSubsystems;
-  }
-  
-  // FALLBACK: Extract from WBS structure
-  const wbsStructure = existingProject.wbsStructure || existingProject.wbs_structure || [];
-  
-  wbsStructure.forEach(item => {
-    const wbsName = item.wbs_name || '';
-    
-    // Look for subsystem pattern: S1 | +Z01 | Subsystem Name
-    const subsystemMatch = wbsName.match(/^S(\d+)\s*\|\s*([^|]+)\s*\|\s*(.+)/);
-    if (subsystemMatch) {
-      const subsystemNumber = subsystemMatch[1];
-      const subsystemCode = subsystemMatch[2].trim();
-      const subsystemName = subsystemMatch[3].trim();
-      
-      subsystems[`S${subsystemNumber}`] = {
-        wbs_code: item.wbs_code,
-        code: subsystemCode,
-        name: subsystemName,
-        full_name: wbsName
-      };
+  // Find new and existing equipment
+  newEquipmentList.forEach(item => {
+    const equipmentCode = item.equipment_number;
+    if (existingCodes.includes(equipmentCode)) {
+      existingEquipment.push(item);
+    } else {
+      newEquipment.push(item);
     }
   });
   
-  console.log('Extracted subsystems:', Object.keys(subsystems));
-  return subsystems;
+  // Find removed equipment (in P6 but not in new list)
+  const newEquipmentCodes = new Set(newEquipmentList.map(item => item.equipment_number));
+  existingCodes.forEach(code => {
+    if (!newEquipmentCodes.has(code)) {
+      removedEquipment.push(code);
+    }
+  });
+  
+  console.log(`Comparison results: ${newEquipment.length} new, ${existingEquipment.length} existing, ${removedEquipment.length} removed`);
+  
+  return {
+    newEquipment,
+    existingEquipment, 
+    removedEquipment
+  };
 };
 
-// EXISTING: Build integrated WBS structure (existing + new with flags)
+// MAIN 3-TIER PRIORITY LOGIC - Core function for WBS assignment
+const assign3TierPriorityWBSCodes = async (newEquipment, existingProject, processedEquipmentData) => {
+  console.log('=== STARTING 3-TIER PRIORITY WBS ASSIGNMENT ===');
+  
+  const assignedWBSItems = [];
+  
+  for (let i = 0; i < newEquipment.length; i++) {
+    const equipment = newEquipment[i];
+    console.log(`\nProcessing equipment ${i + 1}/${newEquipment.length}: "${equipment.equipment_number}"`);
+    
+    let assignedWBS = null;
+    
+    // PRIORITY 1: Check for existing parent (HIGHEST PRIORITY)
+    if (equipment.parent_equipment_number && equipment.parent_equipment_number !== '-') {
+      console.log(`  Priority 1: Checking parent "${equipment.parent_equipment_number}"`);
+      assignedWBS = await assignToExistingParent(equipment, existingProject);
+      
+      if (assignedWBS) {
+        console.log(`  ✅ Priority 1 SUCCESS: Assigned to existing parent`);
+        assignedWBSItems.push(assignedWBS);
+        continue;
+      } else {
+        console.log(`  ❌ Priority 1 FAILED: Parent not found, falling to Priority 2`);
+      }
+    }
+    
+    // PRIORITY 2: Check existing subsystem (MEDIUM PRIORITY)
+    console.log(`  Priority 2: Checking existing subsystem`);
+    assignedWBS = await assignToExistingSubsystem(equipment, existingProject, processedEquipmentData);
+    
+    if (assignedWBS) {
+      console.log(`  ✅ Priority 2 SUCCESS: Assigned to existing subsystem`);
+      assignedWBSItems.push(assignedWBS);
+      continue;
+    } else {
+      console.log(`  ❌ Priority 2 FAILED: Subsystem not found, falling to Priority 3`);
+    }
+    
+    // PRIORITY 3: Create new subsystem (LOWEST PRIORITY)
+    console.log(`  Priority 3: Creating new subsystem`);
+    assignedWBS = await assignToNewSubsystem(equipment, existingProject, processedEquipmentData);
+    
+    if (assignedWBS) {
+      console.log(`  ✅ Priority 3 SUCCESS: Assigned to new subsystem`);
+      // For new subsystems, we might return multiple WBS items (subsystem + categories + equipment)
+      if (Array.isArray(assignedWBS)) {
+        assignedWBSItems.push(...assignedWBS);
+      } else {
+        assignedWBSItems.push(assignedWBS);
+      }
+    } else {
+      console.log(`  ❌ Priority 3 FAILED: Could not assign WBS code`);
+      // This shouldn't happen, but create a fallback
+      const fallbackWBS = createFallbackWBSItem(equipment);
+      assignedWBSItems.push(fallbackWBS);
+    }
+  }
+  
+  console.log(`=== 3-TIER PRIORITY ASSIGNMENT COMPLETE ===`);
+  console.log(`Total WBS items created: ${assignedWBSItems.length}`);
+  
+  return assignedWBSItems;
+};
+
+// PRIORITY 1: Assign equipment to existing parent
+const assignToExistingParent = async (equipment, existingProject) => {
+  const parentEquipmentNumber = equipment.parent_equipment_number;
+  
+  // Strip "-" prefix for matching (but keep original for display)
+  const parentForMatching = parentEquipmentNumber.startsWith('-') 
+    ? parentEquipmentNumber.substring(1) 
+    : parentEquipmentNumber;
+  
+  console.log(`    Looking for parent "${parentForMatching}" in P6 equipment codes...`);
+  
+  // Check if parent exists in P6 equipment codes
+  const existingEquipmentCodes = existingProject.equipmentCodes || [];
+  const parentExists = existingEquipmentCodes.includes(parentForMatching) || 
+                      existingEquipmentCodes.includes(parentEquipmentNumber);
+  
+  if (!parentExists) {
+    console.log(`    Parent "${parentForMatching}" not found in P6 data`);
+    return null;
+  }
+  
+  // Find parent in WBS structure to get its WBS code
+  const wbsStructure = existingProject.wbsStructure || [];
+  const parentWBSItem = wbsStructure.find(item => {
+    if (!item.wbs_name || !item.wbs_name.includes('|')) return false;
+    const itemEquipmentCode = item.wbs_name.split('|')[0].trim();
+    return itemEquipmentCode === parentForMatching || itemEquipmentCode === parentEquipmentNumber;
+  });
+  
+  if (!parentWBSItem) {
+    console.log(`    Parent "${parentForMatching}" found in codes but not in WBS structure`);
+    return null;
+  }
+  
+  console.log(`    Found parent at WBS code: ${parentWBSItem.wbs_code}`);
+  
+  // Find existing children of this parent using WBS hierarchy
+  const parentWBSCode = parentWBSItem.wbs_code;
+  const existingChildren = wbsStructure.filter(item => {
+    return item.wbs_code !== parentWBSCode && 
+           item.wbs_code.startsWith(parentWBSCode + '.');
+  });
+  
+  console.log(`    Found ${existingChildren.length} existing children of parent`);
+  
+  // Calculate next sequential child number
+  let nextChildNumber = 1;
+  if (existingChildren.length > 0) {
+    // Extract child numbers and find the highest
+    const childNumbers = existingChildren.map(child => {
+      const childCodePart = child.wbs_code.replace(parentWBSCode + '.', '');
+      const firstPart = childCodePart.split('.')[0]; // Get the immediate child level
+      return parseInt(firstPart) || 0;
+    });
+    nextChildNumber = Math.max(...childNumbers) + 1;
+  }
+  
+  const newChildWBSCode = `${parentWBSCode}.${nextChildNumber}`;
+  
+  console.log(`    Assigning child WBS code: ${newChildWBSCode}`);
+  
+  return {
+    wbs_code: newChildWBSCode,
+    parent_wbs_code: parentWBSCode,
+    wbs_name: `${equipment.equipment_number} | ${equipment.description}`,
+    equipment_number: equipment.equipment_number,
+    description: equipment.description,
+    commissioning_yn: equipment.commissioning_yn,
+    category: equipment.category,
+    category_name: equipment.category_name,
+    level: parentWBSCode.split('.').length + 1,
+    is_equipment: true,
+    is_structural: false,
+    subsystem: equipment.subsystem,
+    isNew: true
+  };
+};
+
+// PRIORITY 2: Assign equipment to existing subsystem
+const assignToExistingSubsystem = async (equipment, existingProject, processedEquipmentData) => {
+  // Parse subsystem from equipment subsystem field
+  const equipmentSubsystem = equipment.subsystem || '';
+  const subsystemCode = parseSubsystemCode(equipmentSubsystem); // Extract +Z01, +Z02, etc.
+  
+  console.log(`    Checking if subsystem "${subsystemCode}" exists in P6...`);
+  
+  // Check if this subsystem exists in P6 structure
+  const wbsStructure = existingProject.wbsStructure || [];
+  const existingSubsystem = wbsStructure.find(item => {
+    return item.wbs_name && item.wbs_name.includes(subsystemCode);
+  });
+  
+  if (!existingSubsystem) {
+    console.log(`    Subsystem "${subsystemCode}" not found in existing P6 structure`);
+    return null;
+  }
+  
+  console.log(`    Found existing subsystem at WBS code: ${existingSubsystem.wbs_code}`);
+  
+  // Find the appropriate category for this equipment
+  const equipmentCategory = equipment.category;
+  const categoryName = EQUIPMENT_CATEGORIES[equipmentCategory] || 'Unrecognised Equipment';
+  
+  console.log(`    Equipment categorized as: ${equipmentCategory} | ${categoryName}`);
+  
+  // Find the category structure within the existing subsystem
+  const categoryWBSItem = wbsStructure.find(item => {
+    return item.wbs_code.startsWith(existingSubsystem.wbs_code + '.') &&
+           item.wbs_name && 
+           item.wbs_name.includes(`${equipmentCategory} |`);
+  });
+  
+  if (!categoryWBSItem) {
+    console.log(`    Category "${equipmentCategory}" not found in existing subsystem structure`);
+    return null;
+  }
+  
+  console.log(`    Found category at WBS code: ${categoryWBSItem.wbs_code}`);
+  
+  // Find existing equipment in this category to determine next available number
+  const categoryWBSCode = categoryWBSItem.wbs_code;
+  const existingEquipmentInCategory = wbsStructure.filter(item => {
+    return item.wbs_code !== categoryWBSCode && 
+           item.wbs_code.startsWith(categoryWBSCode + '.') &&
+           item.wbs_name && 
+           item.wbs_name.includes('|'); // Has equipment format
+  });
+  
+  console.log(`    Found ${existingEquipmentInCategory.length} existing equipment items in this category`);
+  
+  // Calculate next sequential equipment number
+  let nextEquipmentNumber = 1;
+  if (existingEquipmentInCategory.length > 0) {
+    const equipmentNumbers = existingEquipmentInCategory.map(item => {
+      const equipmentCodePart = item.wbs_code.replace(categoryWBSCode + '.', '');
+      const firstPart = equipmentCodePart.split('.')[0];
+      return parseInt(firstPart) || 0;
+    });
+    nextEquipmentNumber = Math.max(...equipmentNumbers) + 1;
+  }
+  
+  const newEquipmentWBSCode = `${categoryWBSCode}.${nextEquipmentNumber}`;
+  
+  console.log(`    Assigning equipment WBS code: ${newEquipmentWBSCode}`);
+  
+  return {
+    wbs_code: newEquipmentWBSCode,
+    parent_wbs_code: categoryWBSCode,
+    wbs_name: `${equipment.equipment_number} | ${equipment.description}`,
+    equipment_number: equipment.equipment_number,
+    description: equipment.description,
+    commissioning_yn: equipment.commissioning_yn,
+    category: equipment.category,
+    category_name: equipment.category_name,
+    level: categoryWBSCode.split('.').length + 1,
+    is_equipment: true,
+    is_structural: false,
+    subsystem: equipment.subsystem,
+    isNew: true
+  };
+};
+
+// PRIORITY 3: Assign equipment to new subsystem (create full structure)
+const assignToNewSubsystem = async (equipment, existingProject, processedEquipmentData) => {
+  console.log(`    Creating new subsystem for equipment...`);
+  
+  // Parse subsystem information from equipment subsystem field
+  const equipmentSubsystem = equipment.subsystem || '';
+  const { name: subsystemName, code: subsystemCode } = parseSubsystemFromColumn(equipmentSubsystem);
+  
+  console.log(`    New subsystem: "${subsystemName}" with code "${subsystemCode}"`);
+  
+  // Determine next available subsystem number (S2, S3, S4, etc.)
+  const nextSubsystemNumber = getNextSubsystemNumber(existingProject);
+  const subsystemWBSCode = getNextSubsystemWBSCode(existingProject, nextSubsystemNumber);
+  
+  console.log(`    Assigning subsystem WBS code: ${subsystemWBSCode}`);
+  
+  const wbsItems = [];
+  
+  // Create subsystem header
+  const subsystemHeader = {
+    wbs_code: subsystemWBSCode,
+    parent_wbs_code: getProjectRootWBSCode(existingProject),
+    wbs_name: `S${nextSubsystemNumber} | ${subsystemCode} | ${subsystemName}`,
+    equipment_number: null,
+    description: `${subsystemName}`,
+    commissioning_yn: null,
+    category: null,
+    category_name: null,
+    level: subsystemWBSCode.split('.').length,
+    is_equipment: false,
+    is_structural: true,
+    subsystem: equipment.subsystem,
+    isNew: true
+  };
+  
+  wbsItems.push(subsystemHeader);
+  
+  // Create all standard categories (01-99) under this subsystem
+  let categoryIndex = 1;
+  const equipmentCategory = equipment.category;
+  const categoryName = EQUIPMENT_CATEGORIES[equipmentCategory] || 'Unrecognised Equipment';
+  
+  // For now, just create the category needed for this equipment
+  // (In full implementation, you might want to create all categories)
+  const categoryWBSCode = `${subsystemWBSCode}.${categoryIndex}`;
+  
+  const categoryItem = {
+    wbs_code: categoryWBSCode,
+    parent_wbs_code: subsystemWBSCode,
+    wbs_name: `${equipmentCategory} | ${categoryName}`,
+    equipment_number: null,
+    description: categoryName,
+    commissioning_yn: null,
+    category: equipmentCategory,
+    category_name: categoryName,
+    level: categoryWBSCode.split('.').length,
+    is_equipment: false,
+    is_structural: true,
+    subsystem: equipment.subsystem,
+    isNew: true
+  };
+  
+  wbsItems.push(categoryItem);
+  
+  // Create equipment item under the category
+  const equipmentWBSCode = `${categoryWBSCode}.1`;
+  
+  const equipmentItem = {
+    wbs_code: equipmentWBSCode,
+    parent_wbs_code: categoryWBSCode,
+    wbs_name: `${equipment.equipment_number} | ${equipment.description}`,
+    equipment_number: equipment.equipment_number,
+    description: equipment.description,
+    commissioning_yn: equipment.commissioning_yn,
+    category: equipment.category,
+    category_name: equipment.category_name,
+    level: equipmentWBSCode.split('.').length,
+    is_equipment: true,
+    is_structural: false,
+    subsystem: equipment.subsystem,
+    isNew: true
+  };
+  
+  wbsItems.push(equipmentItem);
+  
+  console.log(`    Created ${wbsItems.length} WBS items for new subsystem`);
+  
+  return wbsItems;
+};
+
+// HELPER FUNCTIONS
+
+// Parse subsystem code from column data
+const parseSubsystemCode = (subsystemColumn) => {
+  if (!subsystemColumn) return '';
+  
+  // Parse format: "33kV Switchroom 1 - +Z01" → "+Z01"
+  const parts = subsystemColumn.split(' - ');
+  return parts.length > 1 ? parts[parts.length - 1].trim() : '';
+};
+
+// Parse subsystem name and code from column data  
+const parseSubsystemFromColumn = (subsystemColumn) => {
+  if (!subsystemColumn) return { name: '', code: '' };
+  
+  // Parse format: "33kV Switchroom 1 - +Z01"
+  const parts = subsystemColumn.split(' - ');
+  if (parts.length >= 2) {
+    const name = parts.slice(0, -1).join(' - ').trim();
+    const code = parts[parts.length - 1].trim();
+    return { name, code };
+  }
+  
+  return { name: subsystemColumn, code: '' };
+};
+
+// Get next available subsystem number
+const getNextSubsystemNumber = (existingProject) => {
+  const wbsStructure = existingProject.wbsStructure || [];
+  
+  // Find existing subsystems (S1, S2, S3, etc.)
+  const existingSubsystems = wbsStructure.filter(item => {
+    return item.wbs_name && /^S\d+\s*\|/.test(item.wbs_name);
+  });
+  
+  const subsystemNumbers = existingSubsystems.map(item => {
+    const match = item.wbs_name.match(/^S(\d+)/);
+    return match ? parseInt(match[1]) : 0;
+  });
+  
+  return subsystemNumbers.length > 0 ? Math.max(...subsystemNumbers) + 1 : 2; // Start with S2
+};
+
+// Get next subsystem WBS code
+const getNextSubsystemWBSCode = (existingProject, subsystemNumber) => {
+  const projectRoot = getProjectRootWBSCode(existingProject);
+  
+  // Find existing subsystem codes at the same level
+  const wbsStructure = existingProject.wbsStructure || [];
+  const subsystemLevel = wbsStructure.filter(item => {
+    return item.parent_wbs_code === projectRoot || 
+           (item.wbs_code && item.wbs_code.split('.').length === projectRoot.split('.').length + 1);
+  });
+  
+  if (subsystemLevel.length === 0) {
+    return `${projectRoot}.2`; // First subsystem after project root
+  }
+  
+  // Find the highest subsystem number at this level
+  const subsystemCodes = subsystemLevel.map(item => {
+    const parts = item.wbs_code.split('.');
+    return parseInt(parts[parts.length - 1]) || 0;
+  });
+  
+  const nextNumber = Math.max(...subsystemCodes) + 1;
+  return `${projectRoot}.${nextNumber}`;
+};
+
+// Get project root WBS code
+const getProjectRootWBSCode = (existingProject) => {
+  const wbsStructure = existingProject.wbsStructure || [];
+  
+  // Find the project root (item with no parent)
+  const rootItem = wbsStructure.find(item => !item.parent_wbs_code);
+  
+  return rootItem ? rootItem.wbs_code : '1';
+};
+
+// Create fallback WBS item if all priorities fail
+const createFallbackWBSItem = (equipment) => {
+  return {
+    wbs_code: `FALLBACK.${Date.now()}`,
+    parent_wbs_code: '',
+    wbs_name: `${equipment.equipment_number} | ${equipment.description}`,
+    equipment_number: equipment.equipment_number,
+    description: equipment.description,
+    commissioning_yn: equipment.commissioning_yn,
+    category: equipment.category || '99',
+    category_name: equipment.category_name || 'Unrecognised Equipment',
+    level: 2,
+    is_equipment: true,
+    is_structural: false,
+    subsystem: equipment.subsystem,
+    isNew: true
+  };
+};
+
+// Build integrated WBS structure (existing + new with flags)
 const buildIntegratedWBSStructure = (existingWBS, newWBSItems) => {
   console.log('Building integrated WBS structure...');
   
   // Mark existing items
   const markedExisting = existingWBS.map(item => ({ ...item, isNew: false }));
   
-  // Mark new items
+  // Mark new items (they should already be marked, but ensure consistency)
   const markedNew = newWBSItems.map(item => ({ ...item, isNew: true }));
   
   // Combine and sort by WBS code
   const combined = [...markedExisting, ...markedNew];
   
-  // Sort hierarchically
+  // Sort hierarchically by WBS code
   return combined.sort((a, b) => {
     const aParts = a.wbs_code.split('.').map(part => parseInt(part) || 0);
     const bParts = b.wbs_code.split('.').map(part => parseInt(part) || 0);
@@ -558,18 +577,23 @@ const buildIntegratedWBSStructure = (existingWBS, newWBSItems) => {
   });
 };
 
-// EXISTING: Prepare export data (new items only)
+// Prepare export data (new items only in P6 format)
 const prepareExportData = (newWBSItems) => {
   return newWBSItems.map(item => ({
     wbs_code: item.wbs_code,
     parent_wbs_code: item.parent_wbs_code || '',
-    wbs_name: item.wbs_name,
-    equipment_number: item.equipment_number,
-    description: item.description,
-    commissioning_yn: item.commissioning_yn,
-    is_new: true
+    wbs_name: item.wbs_name
   }));
 };
 
-// LEGACY COMPATIBILITY: Keep original function name as alias
+// Legacy compatibility - keep original function name as alias
 export const compareEquipment = compareEquipmentLists;
+
+// Additional utility exports
+export { 
+  extractEquipmentCodesFromP6,
+  assign3TierPriorityWBSCodes,
+  parseSubsystemFromColumn,
+  buildIntegratedWBSStructure,
+  prepareExportData
+};
