@@ -71,7 +71,7 @@ export const compareEquipmentLists = async (existingProject, newEquipmentList, p
     newWBSItems.sort(sortWBSItems);
     
     console.log('Step 5: Building integrated structure...');
-    const integratedStructure = buildIntegratedWBSStructure(existingProject, newWBSItems);
+    const integratedStructure = buildIntegratedWBSStructure(existingProject.wbsStructure, newWBSItems);
     
     // Step 6: Prepare export data
     const exportData = prepareExportData(newWBSItems);
