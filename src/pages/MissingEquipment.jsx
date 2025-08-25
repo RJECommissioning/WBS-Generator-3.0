@@ -44,7 +44,8 @@ const MissingEquipment = () => {
 
   const [currentStep, setCurrentStep] = useState(1);
   const [debugInfo, setDebugInfo] = useState('');
-  const [equipmentFileData, setEquipmentFileData] = useState(null); // Local state for equipment data
+  const [equipmentFileData, setEquipmentFileData] = useState(null);
+  const [isProcessingReady, setIsProcessingReady] = useState(false); // FIXED: Separate state to prevent loops
 
   // Debug logging helper
   const addDebugInfo = (message) => {
@@ -52,23 +53,27 @@ const MissingEquipment = () => {
     setDebugInfo(prev => prev + '\n' + `[${new Date().toLocaleTimeString()}] ${message}`);
   };
 
-  // Reset state on component mount
+  // FIXED: Reset state on component mount - only once
   useEffect(() => {
     console.log('Missing Equipment component mounted - resetting state');
     resetMissingEquipment();
     clearMessages();
     setCurrentStep(1);
     setEquipmentFileData(null);
-  }, [resetMissingEquipment, clearMessages]);
+    setIsProcessingReady(false);
+  }, []); // FIXED: Empty dependency array
 
-  // Check if both files are ready for processing
-  const canProcessEquipment = () => {
+  // FIXED: Check processing readiness - separate effect with proper dependencies
+  useEffect(() => {
     const p6Ready = existingProject?.equipmentCodes?.length > 0;
     const equipmentReady = equipmentFileData && equipmentFileData.length > 0;
+    const newReadyState = p6Ready && equipmentReady;
     
-    addDebugInfo(`Can process check: P6 ready: ${p6Ready}, Equipment ready: ${equipmentReady}`);
-    return p6Ready && equipmentReady;
-  };
+    if (newReadyState !== isProcessingReady) {
+      addDebugInfo(`Processing ready state changed: P6 ready: ${p6Ready}, Equipment ready: ${equipmentReady}`);
+      setIsProcessingReady(newReadyState);
+    }
+  }, [existingProject?.equipmentCodes?.length, equipmentFileData?.length, isProcessingReady]);
 
   // Step 1: Handle P6 paste data processing
   const handleP6DataPasted = async (pasteContent) => {
@@ -133,7 +138,7 @@ const MissingEquipment = () => {
 
       addDebugInfo(`Equipment parsing successful! Found ${parseResult.dataLength} equipment items`);
 
-      // Store equipment data locally (not in the complex store state)
+      // FIXED: Store equipment data locally
       setEquipmentFileData(parseResult.data);
       
       // Update store state for UI display
@@ -284,6 +289,7 @@ const MissingEquipment = () => {
     resetMissingEquipment();
     setCurrentStep(1);
     setEquipmentFileData(null);
+    setIsProcessingReady(false);
     clearMessages();
     setDebugInfo('');
   };
@@ -400,18 +406,32 @@ const MissingEquipment = () => {
               </div>
             )}
 
-            {/* P6 Data Preview */}
+            {/* FIXED: Simplified P6 Data Preview without problematic visualization */}
             {existingProject.wbsStructure?.length > 0 && (
               <div className="mt-6">
-                <h3 className="text-lg font-medium mb-4">Preview: Existing Project Structure</h3>
-                <WBSVisualization
-                  wbsData={existingProject.wbsStructure}
-                  title="Current P6 Project Structure"
-                  maxHeight="400px"
-                  expandAllByDefault={false}
-                  showSearch={true}
-                  showNewBadges={false}
-                />
+                <h3 className="text-lg font-medium mb-4">P6 Data Summary</h3>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="font-medium text-gray-800">Project Name</div>
+                      <div className="text-gray-600">{existingProject.projectInfo?.projectName || 'Summerfield'}</div>
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-800">Total WBS Items</div>
+                      <div className="text-gray-600">{existingProject.wbsStructure.length}</div>
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-800">Equipment Codes Found</div>
+                      <div className="text-gray-600">{existingProject.equipmentCodes?.length || 0}</div>
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-800">Sample Equipment</div>
+                      <div className="text-gray-600 text-sm">
+                        {existingProject.equipmentCodes?.slice(0, 3).join(', ') || 'None'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -475,7 +495,8 @@ const MissingEquipment = () => {
                       Found {equipmentFileData.length} equipment items - ready for comparison
                     </div>
                   </div>
-                  {canProcessEquipment() && (
+                  {/* FIXED: Use stable boolean instead of function call */}
+                  {isProcessingReady && (
                     <button
                       onClick={handleProcessEquipment}
                       disabled={processing.stage && processing.stage !== 'complete'}
@@ -488,8 +509,8 @@ const MissingEquipment = () => {
               </div>
             )}
 
-            {/* Ready to Process Indicator */}
-            {canProcessEquipment() && !processing.stage && (
+            {/* FIXED: Ready to Process Indicator */}
+            {isProcessingReady && !processing.stage && (
               <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <div className="flex items-center justify-between">
                   <div>
@@ -544,18 +565,26 @@ const MissingEquipment = () => {
               </div>
             )}
 
-            {/* Combined Visualization */}
+            {/* FIXED: Simplified Results Display */}
             {combinedWBS.length > 0 && (
               <div className="mb-6">
-                <h3 className="text-lg font-medium mb-4">Combined Project Structure (Existing + New)</h3>
-                <WBSVisualization
-                  wbsData={combinedWBS}
-                  title={`${existingProject.projectInfo?.projectName || 'Project'} - With New Equipment`}
-                  maxHeight="500px"
-                  expandAllByDefault={false}
-                  showSearch={true}
-                  showNewBadges={true}
-                />
+                <h3 className="text-lg font-medium mb-4">Processing Results</h3>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">{existingProject.wbsStructure?.length || 0}</div>
+                      <div className="text-sm text-gray-600">Existing Items</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600">{exportData.length}</div>
+                      <div className="text-sm text-gray-600">New Items</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-600">{combinedWBS.length}</div>
+                      <div className="text-sm text-gray-600">Total Items</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
