@@ -44,8 +44,12 @@ export const compareEquipmentLists = async (existingProject, newEquipmentList, p
   try {
     console.log('=== STARTING MISSING EQUIPMENT COMPARISON ===');
     console.log(`P6 Project: ${existingProject.projectName || 'Unknown'}`);
-    console.log(`New Equipment Items: ${newEquipmentList.length}`);
-    
+    console.log(`New Equipment Items: ${newEquipmentList?.length || 'undefined'}`);
+    console.log('DEBUG - existingProject:', typeof existingProject, existingProject?.wbsStructure?.length);
+    console.log('DEBUG - newEquipmentList:', typeof newEquipmentList, Array.isArray(newEquipmentList), newEquipmentList?.length);
+    console.log('DEBUG - first equipment item:', newEquipmentList?.[0]);
+    console.log('DEBUG - equipment codes:', existingProject?.equipmentCodes?.length);
+
     // Step 1: Extract existing equipment codes from P6 data
     console.log('Step 1: Extracting existing equipment codes...');
     const existingCodes = extractEquipmentCodesFromP6(existingProject);
