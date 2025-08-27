@@ -197,45 +197,61 @@ const useProjectStore = create((set, get) => ({
   })),
 
   processP6Paste: async (pasteContent) => {
-    const { setP6PasteData, setError, setSuccess, setMissingEquipmentExistingProject } = get();
+  const { setP6PasteData, setError, setSuccess, setMissingEquipmentExistingProject } = get();
+  
+  try {
+    console.log('Processing P6 paste data...');
+    setP6PasteData(pasteContent, 'processing');
     
-    try {
-      console.log('Processing P6 paste data...');
-      setP6PasteData(pasteContent, 'processing');
-      
-      // Import P6 parser
-      const { parseP6PasteData } = await import('../lib/p6Parser');
-      
-      // Parse the P6 data
-      const parseResult = await parseP6PasteData(pasteContent);
-      
-      if (!parseResult.hasData) {
-        throw new Error('No valid WBS data found in paste content');
-      }
-      
-      // ENHANCED: Store full P6 parsing result with enhanced data
-      setMissingEquipmentExistingProject({
-        wbsStructure: parseResult.data,
-        projectInfo: parseResult.projectInfo,
-        equipmentCodes: parseResult.equipmentCodes || [],
-        equipmentMapping: parseResult.equipmentMapping || {},      // ENHANCED: Store equipment mapping
-        existingSubsystems: parseResult.existingSubsystems || {}   // ENHANCED: Store subsystem data
-      });
-      
-      // Update P6 paste state
-      setP6PasteData(pasteContent, 'success', null, parseResult.data, parseResult.validation);
-      
-      setSuccess(`P6 data processed successfully! Found ${parseResult.dataLength} WBS items.`);
-      
-      return parseResult;
-      
-    } catch (error) {
-      console.error('P6 paste processing failed:', error);
-      setP6PasteData(pasteContent, 'error', error.message);
-      setError(`P6 parsing failed: ${error.message}`);
-      throw error;
+    // Import P6 parser
+    const { parseP6PasteData } = await import('../lib/p6Parser');
+    
+    // Parse the P6 data
+    const parseResult = await parseP6PasteData(pasteContent);
+    
+    if (!parseResult.hasData) {
+      throw new Error('No valid WBS data found in paste content');
     }
-  },
+    
+    // ENHANCED: Store full P6 parsing result with enhanced data
+    const projectData = {
+      wbsStructure: parseResult.data,
+      projectInfo: parseResult.projectInfo,
+      equipmentCodes: parseResult.equipmentCodes || [],
+      equipmentMapping: parseResult.equipmentMapping || {},      // ENHANCED: Store equipment mapping
+      existingSubsystems: parseResult.existingSubsystems || {}   // ENHANCED: Store subsystem data
+    };
+    
+    setMissingEquipmentExistingProject(projectData);
+    
+    // Update P6 paste state
+    setP6PasteData(pasteContent, 'success', null, parseResult.data, parseResult.validation);
+    
+    setSuccess(`P6 data processed successfully! Found ${parseResult.dataLength} WBS items.`);
+    
+    // FIXED: Return the expected format for MissingEquipment.jsx
+    return {
+      success: true,
+      data: projectData,
+      dataLength: parseResult.dataLength,
+      projectInfo: parseResult.projectInfo,
+      equipmentCodes: parseResult.equipmentCodes || [],
+      validation: parseResult.validation
+    };
+    
+  } catch (error) {
+    console.error('P6 paste processing failed:', error);
+    setP6PasteData(pasteContent, 'error', error.message);
+    setError(`P6 parsing failed: ${error.message}`);
+    
+    // FIXED: Return error format
+    return {
+      success: false,
+      error: error.message,
+      data: null
+    };
+  }
+},
 
   // Project Actions
   initializeProject: (projectName) => set(() => ({
