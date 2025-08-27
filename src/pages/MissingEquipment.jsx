@@ -364,7 +364,7 @@ const MissingEquipment = () => {
         )}
 
         {/* Processing Status */}
-        {processing.stage && processing.stage !== 'idle' && processing.stage !== 'complete' && (
+        {(processing.stage === 'parsing' || processing.stage === 'comparing' || processing.stage === 'building') && (
           <div className="mb-6">
             <LoadingSpinner message={processing.message} progress={processing.progress} />
           </div>
