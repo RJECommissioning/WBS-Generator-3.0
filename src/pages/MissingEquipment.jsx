@@ -92,8 +92,9 @@ const MissingEquipment = () => {
       if (result.success) {
         setMissingEquipmentExistingProject(result.data);
         addDebugInfo(`P6 parsing successful! Found ${result.data.wbsStructure.length} WBS items`);
-        addDebugInfo(`Project: ${result.data.projectName}`);
+        addDebugInfo(`Project: ${result.data.projectInfo?.projectName || 'N/A'}`);
         addDebugInfo(`Equipment codes extracted: ${result.data.equipmentCodes.length}`);
+        addDebugInfo(`Existing subsystems found: ${Object.keys(result.data.existingSubsystems || {}).length}`);
         addDebugInfo('P6 data processing completed - ready for next step');
       } else {
         throw new Error(result.error || 'Failed to process P6 data');
@@ -107,7 +108,7 @@ const MissingEquipment = () => {
     }
   };
 
-  // Step 2: Handle equipment file upload
+  // FIXED: Step 2 - Handle equipment file upload with proper callback
   const handleEquipmentFile = async (file) => {
     try {
       console.log('=== STARTING EQUIPMENT FILE UPLOAD ===');
@@ -134,7 +135,7 @@ const MissingEquipment = () => {
 
       addDebugInfo(`Equipment parsing successful! Found ${parseResult.dataLength} equipment items`);
 
-      // Store equipment data locally
+      // FIXED: Store equipment data locally for processing
       setEquipmentFileData(parseResult.data);
       
       // Update store state for UI display
@@ -149,6 +150,7 @@ const MissingEquipment = () => {
       setSuccess(`Equipment file processed successfully! Found ${parseResult.dataLength} equipment items.`);
       
       addDebugInfo('Equipment file processing completed - ready for comparison');
+      addDebugInfo(`Local equipment data set: ${parseResult.data.length} items`);
       
     } catch (error) {
       console.error('Equipment parsing failed:', error);
@@ -186,12 +188,14 @@ const MissingEquipment = () => {
       console.log('Processing validation passed:', {
         wbsItems: existingProject.wbsStructure.length,
         equipmentCodes: existingProject.equipmentCodes?.length || 0,
+        existingSubsystems: Object.keys(existingProject.existingSubsystems || {}).length,
         newEquipmentItems: equipmentFileData.length
       });
 
       addDebugInfo(`Processing validation passed:`);
       addDebugInfo(`- P6 WBS items: ${existingProject.wbsStructure.length}`);
       addDebugInfo(`- P6 equipment codes: ${existingProject.equipmentCodes?.length || 0}`);
+      addDebugInfo(`- P6 existing subsystems: ${Object.keys(existingProject.existingSubsystems || {}).length}`);
       addDebugInfo(`- New equipment items: ${equipmentFileData.length}`);
 
       setProcessingStage('comparing', 40, 'Running 3-tier priority comparison...');
@@ -383,7 +387,7 @@ const MissingEquipment = () => {
               </button>
             </div>
 
-            {/* FIXED: Inline P6 Paste Input - No external component dependency */}
+            {/* P6 Paste Input */}
             <div className="p6-paste-input">
               <div className="mb-4">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
@@ -434,7 +438,7 @@ const MissingEquipment = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                   <div>
                     <div className="font-medium text-gray-800">Project Name</div>
-                    <div className="text-gray-600">{existingProject.projectName}</div>
+                    <div className="text-gray-600">{existingProject.projectInfo?.projectName || 'N/A'}</div>
                   </div>
                   <div>
                     <div className="font-medium text-gray-800">Total WBS Items</div>
@@ -445,10 +449,8 @@ const MissingEquipment = () => {
                     <div className="text-gray-600">{existingProject.equipmentCodes?.length || 0}</div>
                   </div>
                   <div>
-                    <div className="font-medium text-gray-800">Sample Equipment</div>
-                    <div className="text-gray-600 text-sm">
-                      {existingProject.equipmentCodes?.slice(0, 3).join(', ') || 'None'}
-                    </div>
+                    <div className="font-medium text-gray-800">Existing Subsystems</div>
+                    <div className="text-gray-600">{Object.keys(existingProject.existingSubsystems || {}).length}</div>
                   </div>
                 </div>
                 
@@ -499,13 +501,17 @@ const MissingEquipment = () => {
                 </div>
               </div>
 
+              {/* FIXED: Use FileUpload component properly */}
               <FileUpload 
-                onFileUpload={handleEquipmentFile}
-                acceptedTypes=".csv,.xlsx,.xls"
-                label="Upload Equipment List"
-                className="mb-4"
+                uploadType="equipment_list"
+                accept=".csv,.xlsx,.xls"
+                title="Upload Equipment List"
+                description="Click to browse or drag and drop your equipment file here"
+                onFileProcessed={handleEquipmentFile}
+                disabled={processing.active}
               />
 
+              {/* FIXED: Show processing status and button when equipment data is ready */}
               {equipmentFileData && equipmentFileData.length > 0 && (
                 <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
                   <h3 className="text-lg font-medium text-green-800 mb-3">✅ Equipment File Processed</h3>
@@ -526,7 +532,7 @@ const MissingEquipment = () => {
                     </div>
                   </div>
 
-                  {/* Process Equipment Button */}
+                  {/* FIXED: Process Equipment Button - should appear now! */}
                   <button 
                     className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-lg font-medium"
                     onClick={handleProcessEquipment}
@@ -597,7 +603,7 @@ const MissingEquipment = () => {
                   </ul>
                 </div>
 
-                {/* FIXED: Use correct ExportButton props for comparison export */}
+                {/* Export Button */}
                 <ExportButton
                   data={comparisonResult}
                   exportType="comparison"
@@ -610,15 +616,24 @@ const MissingEquipment = () => {
               </div>
             </div>
 
-            {/* Future: WBS Visualization */}
+            {/* WBS Visualization */}
             <div className="mb-6">
               <h3 className="text-lg font-medium mb-4">🔍 WBS Structure Preview</h3>
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <p className="text-gray-600 text-center py-8">
-                  WBS visualization will be implemented in the next development phase...
-                  <br />
-                  <span className="text-sm">Combined structure: {combinedWBS?.length || 0} total items</span>
-                </p>
+                {combinedWBS && combinedWBS.length > 0 ? (
+                  <WBSVisualization
+                    wbsData={combinedWBS}
+                    title="Combined Structure (Existing + New)"
+                    showNewBadges={true}
+                    maxHeight="400px"
+                  />
+                ) : (
+                  <p className="text-gray-600 text-center py-8">
+                    WBS visualization will appear after processing...
+                    <br />
+                    <span className="text-sm">Combined structure: {combinedWBS?.length || 0} total items</span>
+                  </p>
+                )}
               </div>
             </div>
           </div>
