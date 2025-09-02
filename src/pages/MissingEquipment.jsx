@@ -12,7 +12,9 @@ import {
   ListItemIcon,
   ListItemText,
   Collapse,
-  Chip
+  Chip,
+  Breadcrumbs,
+  Link
 } from '@mui/material';
 import {
   CloudUpload,
@@ -23,9 +25,12 @@ import {
   Warning,
   ArrowBack,
   Refresh,
-  GetApp
+  GetApp,
+  Home as HomeIcon,
+  NavigateNext
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
+import { useNavigate } from 'react-router-dom';
 
 import useProjectStore from '../store/projectStore';
 import FileUpload from '../components/FileUpload';
@@ -57,6 +62,14 @@ const StyledButton = styled(Button)(({ theme, variant }) => ({
     backgroundColor: BRAND_COLORS.level2,
     color: BRAND_COLORS.white
   }
+}));
+
+const NavigationHeader = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: theme.spacing(3),
+  padding: theme.spacing(2, 0)
 }));
 
 const ProgressStep = styled(Box)(({ theme, isActive, isCompleted }) => ({
@@ -91,6 +104,9 @@ const ProgressDivider = styled(Box)(({ theme }) => ({
 
 const MissingEquipment = () => {
   console.log('=== MISSING EQUIPMENT PAGE LOADED ===');
+  
+  // Navigation hook
+  const navigate = useNavigate();
   
   // Store state
   const {
@@ -409,6 +425,38 @@ const MissingEquipment = () => {
     <Container maxWidth="lg">
       {/* Loading Spinner */}
       <LoadingSpinner variant="modal" />
+
+      {/* Navigation Header */}
+      <NavigationHeader>
+        <Breadcrumbs separator={<NavigateNext fontSize="small" />} sx={{ color: BRAND_COLORS.text }}>
+          <Link 
+            component="button"
+            variant="body2"
+            onClick={() => navigate('/')}
+            sx={{ 
+              display: 'flex', 
+              alignItems: 'center',
+              color: BRAND_COLORS.accent,
+              textDecoration: 'none',
+              '&:hover': { textDecoration: 'underline' }
+            }}
+          >
+            <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
+            Home
+          </Link>
+          <Typography variant="body2" sx={{ color: BRAND_COLORS.text }}>
+            Missing Equipment
+          </Typography>
+        </Breadcrumbs>
+        
+        <StyledButton
+          variant="outlined"
+          startIcon={<HomeIcon />}
+          onClick={() => navigate('/')}
+        >
+          Home
+        </StyledButton>
+      </NavigationHeader>
 
       {/* Header */}
       <Box sx={{ mb: 4 }}>
