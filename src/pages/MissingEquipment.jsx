@@ -1,4 +1,32 @@
 import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Typography,
+  Container,
+  Paper,
+  Button,
+  Alert,
+  Grid,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Collapse,
+  Chip
+} from '@mui/material';
+import {
+  CloudUpload,
+  CheckCircle,
+  ExpandMore,
+  ExpandLess,
+  Info,
+  Warning,
+  ArrowBack,
+  Refresh,
+  GetApp
+} from '@mui/icons-material';
+import { styled } from '@mui/material/styles';
+
 import useProjectStore from '../store/projectStore';
 import FileUpload from '../components/FileUpload';
 import WBSVisualization from '../components/WBSVisualization';
@@ -7,6 +35,59 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { parseFile } from '../lib/fileParser';
 import { categorizeEquipment } from '../lib/equipmentProcessor';
 import { compareEquipmentLists } from '../lib/projectComparer';
+import { BRAND_COLORS } from '../constants';
+
+// Styled components matching StartNewProject.jsx
+const StyledPaper = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(3),
+  marginBottom: theme.spacing(3),
+  border: `1px solid ${BRAND_COLORS.level2}`,
+  borderRadius: theme.spacing(2)
+}));
+
+const StyledButton = styled(Button)(({ theme, variant }) => ({
+  backgroundColor: variant === 'contained' ? BRAND_COLORS.accent : 'transparent',
+  color: variant === 'contained' ? BRAND_COLORS.white : BRAND_COLORS.accent,
+  borderColor: BRAND_COLORS.accent,
+  '&:hover': {
+    backgroundColor: variant === 'contained' ? BRAND_COLORS.level5 : `${BRAND_COLORS.accent}10`,
+    borderColor: BRAND_COLORS.level5
+  },
+  '&:disabled': {
+    backgroundColor: BRAND_COLORS.level2,
+    color: BRAND_COLORS.white
+  }
+}));
+
+const ProgressStep = styled(Box)(({ theme, isActive, isCompleted }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  flex: 1,
+  '& .step-circle': {
+    width: 32,
+    height: 32,
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.spacing(1),
+    backgroundColor: isCompleted ? BRAND_COLORS.level4 : isActive ? BRAND_COLORS.accent : BRAND_COLORS.level2,
+    color: BRAND_COLORS.white,
+    fontSize: '14px',
+    fontWeight: 600
+  },
+  '& .step-text': {
+    color: isActive || isCompleted ? BRAND_COLORS.accent : BRAND_COLORS.text,
+    fontWeight: isActive ? 600 : 400
+  }
+}));
+
+const ProgressDivider = styled(Box)(({ theme }) => ({
+  height: 1,
+  flex: 1,
+  backgroundColor: BRAND_COLORS.level2,
+  margin: `0 ${theme.spacing(1)}`
+}));
 
 const MissingEquipment = () => {
   console.log('=== MISSING EQUIPMENT PAGE LOADED ===');
@@ -47,6 +128,7 @@ const MissingEquipment = () => {
   const [comparisonResult, setComparisonResult] = useState(null);
   const [isProcessingReady, setIsProcessingReady] = useState(false);
   const [pasteContent, setPasteContent] = useState('');
+  const [showInstructions, setShowInstructions] = useState(true);
 
   // Debug logging helper
   const addDebugInfo = (message) => {
@@ -92,9 +174,8 @@ const MissingEquipment = () => {
       if (result.success) {
         setMissingEquipmentExistingProject(result.data);
         addDebugInfo(`P6 parsing successful! Found ${result.data.wbsStructure.length} WBS items`);
-        addDebugInfo(`Project: ${result.data.projectInfo?.projectName || 'N/A'}`);
+        addDebugInfo(`Project: ${result.data.projectName}`);
         addDebugInfo(`Equipment codes extracted: ${result.data.equipmentCodes.length}`);
-        addDebugInfo(`Existing subsystems found: ${Object.keys(result.data.existingSubsystems || {}).length}`);
         addDebugInfo('P6 data processing completed - ready for next step');
       } else {
         throw new Error(result.error || 'Failed to process P6 data');
@@ -108,7 +189,7 @@ const MissingEquipment = () => {
     }
   };
 
-  // FIXED: Step 2 - Handle equipment file upload with proper callback
+  // Step 2: Handle equipment file upload
   const handleEquipmentFile = async (file) => {
     try {
       console.log('=== STARTING EQUIPMENT FILE UPLOAD ===');
@@ -135,7 +216,7 @@ const MissingEquipment = () => {
 
       addDebugInfo(`Equipment parsing successful! Found ${parseResult.dataLength} equipment items`);
 
-      // FIXED: Store equipment data locally for processing
+      // Store equipment data locally
       setEquipmentFileData(parseResult.data);
       
       // Update store state for UI display
@@ -150,7 +231,6 @@ const MissingEquipment = () => {
       setSuccess(`Equipment file processed successfully! Found ${parseResult.dataLength} equipment items.`);
       
       addDebugInfo('Equipment file processing completed - ready for comparison');
-      addDebugInfo(`Local equipment data set: ${parseResult.data.length} items`);
       
     } catch (error) {
       console.error('Equipment parsing failed:', error);
@@ -188,14 +268,12 @@ const MissingEquipment = () => {
       console.log('Processing validation passed:', {
         wbsItems: existingProject.wbsStructure.length,
         equipmentCodes: existingProject.equipmentCodes?.length || 0,
-        existingSubsystems: Object.keys(existingProject.existingSubsystems || {}).length,
         newEquipmentItems: equipmentFileData.length
       });
 
       addDebugInfo(`Processing validation passed:`);
       addDebugInfo(`- P6 WBS items: ${existingProject.wbsStructure.length}`);
       addDebugInfo(`- P6 equipment codes: ${existingProject.equipmentCodes?.length || 0}`);
-      addDebugInfo(`- P6 existing subsystems: ${Object.keys(existingProject.existingSubsystems || {}).length}`);
       addDebugInfo(`- New equipment items: ${equipmentFileData.length}`);
 
       setProcessingStage('comparing', 40, 'Running 3-tier priority comparison...');
@@ -305,351 +383,575 @@ const MissingEquipment = () => {
     setSuccess(`Export completed successfully! Downloaded ${exportResult.recordCount} items.`);
   };
 
+  // Render progress indicator
+  const renderProgressIndicator = () => (
+    <Box sx={{ mb: 4 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <ProgressStep isActive={currentStep === 1} isCompleted={currentStep > 1}>
+          <div className="step-circle">1</div>
+          <Typography variant="body2" className="step-text">Paste P6 WBS Data</Typography>
+        </ProgressStep>
+        <ProgressDivider />
+        <ProgressStep isActive={currentStep === 2} isCompleted={currentStep > 2}>
+          <div className="step-circle">2</div>
+          <Typography variant="body2" className="step-text">Upload Equipment List</Typography>
+        </ProgressStep>
+        <ProgressDivider />
+        <ProgressStep isActive={currentStep === 3} isCompleted={currentStep > 3}>
+          <div className="step-circle">3</div>
+          <Typography variant="body2" className="step-text">Review & Export</Typography>
+        </ProgressStep>
+      </Box>
+    </Box>
+  );
+
   return (
-    <div className="missing-equipment-page">
-      <div className="container mx-auto px-4 py-6">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Missing Equipment</h1>
-          <p className="text-gray-600">
-            Add new equipment to an existing P6 project with intelligent WBS code assignment
-          </p>
-        </div>
+    <Container maxWidth="lg">
+      {/* Loading Spinner */}
+      <LoadingSpinner variant="modal" />
 
-        {/* Progress Indicator */}
-        <div className="mb-8">
-          <div className="flex items-center space-x-4">
-            <div className={`flex items-center ${currentStep >= 1 ? 'text-blue-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 ${
-                currentStep >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-300'
-              }`}>
-                1
-              </div>
-              <span>Paste P6 WBS Data</span>
-            </div>
-            <div className="h-px bg-gray-300 flex-1"></div>
-            <div className={`flex items-center ${currentStep >= 2 ? 'text-blue-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 ${
-                currentStep >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-300'
-              }`}>
-                2
-              </div>
-              <span>Upload Equipment List</span>
-            </div>
-            <div className="h-px bg-gray-300 flex-1"></div>
-            <div className={`flex items-center ${currentStep >= 3 ? 'text-blue-600' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 ${
-                currentStep >= 3 ? 'bg-blue-600 text-white' : 'bg-gray-300'
-              }`}>
-                3
-              </div>
-              <span>Review & Export</span>
-            </div>
-          </div>
-        </div>
+      {/* Header */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" component="h1" sx={{ mb: 2, color: BRAND_COLORS.text, fontWeight: 600 }}>
+          Missing Equipment
+        </Typography>
+        <Typography variant="body1" sx={{ color: BRAND_COLORS.text, opacity: 0.8 }}>
+          Add new equipment to an existing P6 project with intelligent WBS code assignment
+        </Typography>
+      </Box>
 
-        {/* Error/Success Messages */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="flex items-center">
-              <div className="text-red-600 mr-2">❌</div>
-              <div className="text-red-800">{error}</div>
-            </div>
-          </div>
-        )}
+      {/* Progress Indicator */}
+      {renderProgressIndicator()}
 
-        {success && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center">
-              <div className="text-green-600 mr-2">✅</div>
-              <div className="text-green-800">{success}</div>
-            </div>
-          </div>
-        )}
+      {/* Success/Error Messages */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} icon={<Warning />}>
+          {error}
+        </Alert>
+      )}
 
-        {/* Processing Status */}
-        {(processing.stage === 'parsing' || processing.stage === 'comparing' || processing.stage === 'building') && (
-          <div className="mb-6">
-            <LoadingSpinner message={processing.message} progress={processing.progress} />
-          </div>
-        )}
+      {success && (
+        <Alert severity="success" sx={{ mb: 3 }} icon={<CheckCircle />}>
+          {success}
+        </Alert>
+      )}
 
-        {/* Step 1: P6 Paste Input */}
-        {currentStep === 1 && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Step 1: Paste P6 WBS Data</h2>
-              <button
-                onClick={handleReset}
-                className="text-gray-600 hover:text-gray-800 text-sm"
+      {/* Processing Status */}
+      {(processing.stage === 'parsing' || processing.stage === 'comparing' || processing.stage === 'building') && (
+        <Box sx={{ mb: 3 }}>
+          <LoadingSpinner message={processing.message} progress={processing.progress} />
+        </Box>
+      )}
+
+      {/* Step 1: P6 Paste Input */}
+      {currentStep === 1 && (
+        <StyledPaper>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+            <Typography variant="h5" sx={{ color: BRAND_COLORS.text, fontWeight: 600 }}>
+              Step 1: Paste P6 WBS Data
+            </Typography>
+            <StyledButton
+              onClick={handleReset}
+              variant="outlined"
+              size="small"
+              startIcon={<Refresh />}
+            >
+              Reset
+            </StyledButton>
+          </Box>
+
+          {/* Instructions */}
+          <Box sx={{ mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="h6" sx={{ color: BRAND_COLORS.text, fontWeight: 600 }}>
+                P6 Export Instructions
+              </Typography>
+              <Button
+                size="small"
+                onClick={() => setShowInstructions(!showInstructions)}
+                endIcon={showInstructions ? <ExpandLess /> : <ExpandMore />}
+                sx={{ color: BRAND_COLORS.accent }}
               >
-                🔄 Reset
-              </button>
-            </div>
+                {showInstructions ? 'Hide' : 'Show'} Instructions
+              </Button>
+            </Box>
 
-            {/* P6 Paste Input */}
-            <div className="p6-paste-input">
-              <div className="mb-4">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <h3 className="text-sm font-medium text-blue-800 mb-2">📋 P6 Export Instructions</h3>
-                  <div className="text-sm text-blue-700">
-                    <p className="mb-2">Copy your WBS structure from P6 with these exact columns:</p>
-                    <ul className="list-disc list-inside space-y-1">
-                      <li><strong>WBS Code</strong> - The WBS hierarchy code (5737.1064.1575, etc.)</li>
-                      <li><strong>WBS Name</strong> - Equipment names with codes (+UH101 | Description)</li>
-                      <li><strong>Total Activities</strong> - Activity count (can be ignored)</li>
-                    </ul>
-                  </div>
-                </div>
+            <Collapse in={showInstructions}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Copy your WBS structure from P6 with these exact columns:
+                </Typography>
+                <List dense>
+                  <ListItem sx={{ py: 0 }}>
+                    <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
+                    <ListItemText primary="WBS Code - The WBS hierarchy code (5737.1064.1575, etc.)" />
+                  </ListItem>
+                  <ListItem sx={{ py: 0 }}>
+                    <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
+                    <ListItemText primary="WBS Name - Equipment names with codes (+UH101 | Description)" />
+                  </ListItem>
+                  <ListItem sx={{ py: 0 }}>
+                    <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
+                    <ListItemText primary="Total Activities - Activity count (can be ignored)" />
+                  </ListItem>
+                </List>
+              </Alert>
+            </Collapse>
+          </Box>
+          
+          {/* P6 Paste Area */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="body2" sx={{ mb: 2, color: BRAND_COLORS.text, fontWeight: 500 }}>
+              Paste P6 WBS Data:
+            </Typography>
+            <Box
+              component="textarea"
+              value={pasteContent}
+              onChange={(e) => setPasteContent(e.target.value)}
+              placeholder="Paste your P6 WBS data here...&#10;&#10;Example:&#10;WBS Code&#9;WBS Name&#9;Total Activities&#10;5737&#9;Summerfield&#9;605&#10;  5737.1003&#9;M | Milestones&#9;1"
+              disabled={processing.stage === 'parsing'}
+              sx={{
+                width: '100%',
+                minHeight: 160,
+                p: 2,
+                border: `1px solid ${BRAND_COLORS.level3}`,
+                borderRadius: 1,
+                fontFamily: 'monospace',
+                fontSize: '14px',
+                resize: 'vertical',
+                '&:focus': {
+                  outline: 'none',
+                  borderColor: BRAND_COLORS.accent,
+                  boxShadow: `0 0 0 2px ${BRAND_COLORS.accent}20`
+                },
+                '&:disabled': {
+                  backgroundColor: BRAND_COLORS.background,
+                  opacity: 0.6
+                }
+              }}
+            />
+          </Box>
+          
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <StyledButton
+              onClick={() => handleP6Paste(pasteContent)}
+              disabled={!pasteContent.trim() || processing.stage === 'parsing'}
+              variant="contained"
+              startIcon={<CloudUpload />}
+            >
+              {processing.stage === 'parsing' ? 'Processing...' : 'Process P6 Data'}
+            </StyledButton>
+            
+            <StyledButton
+              onClick={() => setPasteContent('')}
+              variant="outlined"
+            >
+              Clear
+            </StyledButton>
+          </Box>
+
+          {/* P6 Processing Results */}
+          {existingProject && existingProject.wbsStructure && (
+            <Box sx={{ mt: 3 }}>
+              <Alert severity="success" icon={<CheckCircle />}>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                  ✅ P6 Data Processed Successfully
+                </Typography>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Box sx={{ textAlign: 'center' }}>
+                      <Typography variant="h4" sx={{ color: BRAND_COLORS.accent, fontWeight: 700 }}>
+                        {existingProject.wbsStructure.length}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7 }}>
+                        Total WBS Items
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Box sx={{ textAlign: 'center' }}>
+                      <Typography variant="h4" sx={{ color: BRAND_COLORS.level4, fontWeight: 700 }}>
+                        {existingProject.equipmentCodes?.length || 0}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7 }}>
+                        Equipment Codes Found
+                      </Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Typography variant="body2" sx={{ color: BRAND_COLORS.text, fontWeight: 500 }}>
+                      Project Name:
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7 }}>
+                      {existingProject.projectName}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Typography variant="body2" sx={{ color: BRAND_COLORS.text, fontWeight: 500 }}>
+                      Sample Equipment:
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7, fontSize: '12px' }}>
+                      {existingProject.equipmentCodes?.slice(0, 3).join(', ') || 'None'}
+                    </Typography>
+                  </Grid>
+                </Grid>
                 
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Paste P6 WBS Data:
-                </label>
-                <textarea
-                  value={pasteContent}
-                  onChange={(e) => setPasteContent(e.target.value)}
-                  placeholder="Paste your P6 WBS data here...&#10;&#10;Example:&#10;WBS Code&#9;WBS Name&#9;Total Activities&#10;5737&#9;Summerfield&#9;605&#10;  5737.1003&#9;M | Milestones&#9;1&#10;  5737.1002&#9;P | Pre-Requisites&#9;66"
-                  className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                  disabled={processing.stage === 'parsing'}
-                />
-              </div>
-              
-              <div className="flex gap-3">
-                <button
-                  onClick={() => handleP6Paste(pasteContent)}
-                  disabled={!pasteContent.trim() || processing.stage === 'parsing'}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {processing.stage === 'parsing' ? 'Processing...' : 'Process P6 Data'}
-                </button>
-                
-                <button
-                  onClick={() => setPasteContent('')}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-
-            {existingProject && existingProject.wbsStructure && (
-              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-                <h3 className="text-lg font-medium text-green-800 mb-3">✅ P6 Data Processed Successfully</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <div className="font-medium text-gray-800">Project Name</div>
-                    <div className="text-gray-600">{existingProject.projectInfo?.projectName || 'N/A'}</div>
-                  </div>
-                  <div>
-                    <div className="font-medium text-gray-800">Total WBS Items</div>
-                    <div className="text-gray-600">{existingProject.wbsStructure.length}</div>
-                  </div>
-                  <div>
-                    <div className="font-medium text-gray-800">Equipment Codes Found</div>
-                    <div className="text-gray-600">{existingProject.equipmentCodes?.length || 0}</div>
-                  </div>
-                  <div>
-                    <div className="font-medium text-gray-800">Existing Subsystems</div>
-                    <div className="text-gray-600">{Object.keys(existingProject.existingSubsystems || {}).length}</div>
-                  </div>
-                </div>
-                
-                <button 
-                  className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  onClick={handleConfirmP6Parsing}
-                >
-                  Continue to Equipment Upload →
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step 2: Equipment Upload */}
-        {currentStep >= 2 && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Step 2: Upload Updated Equipment List</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleBackToStep(1)}
-                  className="text-blue-600 hover:text-blue-800 text-sm"
-                >
-                  ← Back to P6 Data
-                </button>
-                <button
-                  onClick={handleReset}
-                  className="text-gray-600 hover:text-gray-800 text-sm"
-                >
-                  🔄 Start Over
-                </button>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                <h3 className="text-sm font-medium text-blue-800 mb-2">📋 Equipment List Requirements</h3>
-                <div className="text-sm text-blue-700">
-                  <p className="mb-2">Upload your complete equipment list (existing + new equipment). Required columns:</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li><strong>Subsystem</strong> - Equipment subsystem (33kV Switchroom 1 - +Z01, etc.)</li>
-                    <li><strong>Equipment Number</strong> - Equipment code (-XC11, ESS-FIRE-001, etc.)</li>
-                    <li><strong>Parent Equipment Number</strong> - Parent code or "-" for no parent</li>
-                    <li><strong>Description</strong> - Equipment description</li>
-                    <li><strong>Commissioning (Y/N)</strong> - Commissioning status</li>
-                  </ul>
-                </div>
-              </div>
-
-              {/* FIXED: Use FileUpload component properly */}
-              <FileUpload 
-                uploadType="equipment_list"
-                accept=".csv,.xlsx,.xls"
-                title="Upload Equipment List"
-                description="Click to browse or drag and drop your equipment file here"
-                onFileProcessed={handleEquipmentFile}
-                disabled={processing.active}
-              />
-
-              {/* FIXED: Show processing status and button when equipment data is ready */}
-              {equipmentFileData && equipmentFileData.length > 0 && (
-                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <h3 className="text-lg font-medium text-green-800 mb-3">✅ Equipment File Processed</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-4">
-                    <div>
-                      <div className="font-medium text-gray-800">Total Equipment</div>
-                      <div className="text-gray-600">{equipmentFileData.length}</div>
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-800">Sample Items</div>
-                      <div className="text-gray-600">
-                        {equipmentFileData.slice(0, 3).map(item => item.equipment_number).join(', ')}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-800">Ready to Process</div>
-                      <div className="text-green-600">✅ Both files loaded</div>
-                    </div>
-                  </div>
-
-                  {/* FIXED: Process Equipment Button - should appear now! */}
-                  <button 
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-lg font-medium"
-                    onClick={handleProcessEquipment}
-                    disabled={!isProcessingReady || processing.active}
+                <Box sx={{ mt: 3 }}>
+                  <StyledButton 
+                    variant="contained"
+                    onClick={handleConfirmP6Parsing}
+                    endIcon={<ArrowBack sx={{ transform: 'rotate(180deg)' }} />}
                   >
-                    {processing.active ? 'Processing Equipment...' : 'Run 3-Tier Priority Analysis'}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+                    Continue to Equipment Upload
+                  </StyledButton>
+                </Box>
+              </Alert>
+            </Box>
+          )}
+        </StyledPaper>
+      )}
 
-        {/* Step 3: Results & Export */}
-        {currentStep >= 3 && comparisonResult && (
-          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Step 3: Review Results & Export</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleBackToStep(2)}
-                  className="text-blue-600 hover:text-blue-800 text-sm"
-                >
-                  ← Back to Equipment Upload
-                </button>
-                <button
-                  onClick={handleReset}
-                  className="text-gray-600 hover:text-gray-800 text-sm"
-                >
-                  🔄 Start Over
-                </button>
-              </div>
-            </div>
+      {/* Step 2: Equipment Upload */}
+      {currentStep >= 2 && (
+        <StyledPaper>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+            <Typography variant="h5" sx={{ color: BRAND_COLORS.text, fontWeight: 600 }}>
+              Step 2: Upload Updated Equipment List
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <StyledButton
+                onClick={() => handleBackToStep(1)}
+                variant="outlined"
+                size="small"
+                startIcon={<ArrowBack />}
+              >
+                Back to P6 Data
+              </StyledButton>
+              <StyledButton
+                onClick={handleReset}
+                variant="outlined"
+                size="small"
+                startIcon={<Refresh />}
+              >
+                Start Over
+              </StyledButton>
+            </Box>
+          </Box>
 
-            {/* Results Summary */}
-            <div className="mb-6">
-              <h3 className="text-lg font-medium mb-4">📊 Processing Results</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">{comparisonResult.comparison.added.length}</div>
-                  <div className="text-sm text-green-700">New Equipment Found</div>
-                </div>
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">{comparisonResult.comparison.existing.length}</div>
-                  <div className="text-sm text-blue-700">Existing Equipment</div>
-                </div>
-                <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">{comparisonResult.export_ready.length}</div>
-                  <div className="text-sm text-purple-700">WBS Items Created</div>
-                </div>
-                <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                  <div className="text-2xl font-bold text-orange-600">{comparisonResult.export_ready.length}</div>
-                  <div className="text-sm text-orange-700">Ready for P6 Import</div>
-                </div>
-              </div>
-            </div>
+          {/* Equipment List Requirements */}
+          <Box sx={{ mb: 3 }}>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                Equipment List Requirements
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Upload your complete equipment list (existing + new equipment). Required columns:
+              </Typography>
+              <List dense>
+                <ListItem sx={{ py: 0 }}>
+                  <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
+                  <ListItemText primary="Subsystem - Equipment subsystem (33kV Switchroom 1 - +Z01, etc.)" />
+                </ListItem>
+                <ListItem sx={{ py: 0 }}>
+                  <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
+                  <ListItemText primary="Equipment Number - Equipment code (-XC11, ESS-FIRE-001, etc.)" />
+                </ListItem>
+                <ListItem sx={{ py: 0 }}>
+                  <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
+                  <ListItemText primary="Parent Equipment Number - Parent code or &quot;-&quot; for no parent" />
+                </ListItem>
+                <ListItem sx={{ py: 0 }}>
+                  <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
+                  <ListItemText primary="Description - Equipment description" />
+                </ListItem>
+                <ListItem sx={{ py: 0 }}>
+                  <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
+                  <ListItemText primary="Commissioning (Y/N) - Commissioning status" />
+                </ListItem>
+              </List>
+            </Alert>
 
-            {/* Export Section */}
-            <div className="mb-6">
-              <h3 className="text-lg font-medium mb-4">📤 Export to P6</h3>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <div className="mb-4">
-                  <p className="text-gray-700 mb-2">Download the new equipment items in P6-compatible CSV format:</p>
-                  <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
-                    <li>Contains {comparisonResult.export_ready.length} new WBS items</li>
-                    <li>P6-compatible format (wbs_code, parent_wbs_code, wbs_name)</li>
-                    <li>Ready for direct import into P6</li>
-                  </ul>
-                </div>
+            <FileUpload 
+              uploadType="equipment_list"
+              title="Upload Equipment List"
+              description="Upload your CSV or Excel file containing equipment data"
+              accept=".csv,.xlsx,.xls"
+              onFileProcessed={handleEquipmentFile}
+            />
+          </Box>
 
-                {/* Export Button */}
-                <ExportButton
-                  data={comparisonResult}
-                  exportType="comparison"
-                  variant="primary"
+          {/* Equipment Processing Results */}
+          {equipmentFileData && equipmentFileData.length > 0 && (
+            <Alert severity="success" icon={<CheckCircle />}>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                ✅ Equipment File Processed
+              </Typography>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={4}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" sx={{ color: BRAND_COLORS.accent, fontWeight: 700 }}>
+                      {equipmentFileData.length}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7 }}>
+                      Total Equipment
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Typography variant="body2" sx={{ color: BRAND_COLORS.text, fontWeight: 500 }}>
+                    Sample Items:
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7 }}>
+                    {equipmentFileData.slice(0, 3).map(item => item.equipment_number).join(', ')}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <CheckCircle sx={{ color: 'success.main', mr: 1 }} />
+                    <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 500 }}>
+                      Ready to Process
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+
+              <Box sx={{ mt: 3 }}>
+                <StyledButton 
+                  variant="contained"
                   size="large"
-                  customLabel="Export New Equipment to P6"
-                  filename={`Missing_Equipment_${new Date().toISOString().split('T')[0].replace(/-/g, '')}`}
-                  onExportComplete={handleExportComplete}
-                />
-              </div>
-            </div>
+                  onClick={handleProcessEquipment}
+                  disabled={!isProcessingReady || processing.active}
+                  startIcon={<CloudUpload />}
+                >
+                  {processing.active ? 'Processing Equipment...' : 'Run 3-Tier Priority Analysis'}
+                </StyledButton>
+              </Box>
+            </Alert>
+          )}
+        </StyledPaper>
+      )}
 
-            {/* WBS Visualization */}
-            <div className="mb-6">
-              <h3 className="text-lg font-medium mb-4">🔍 WBS Structure Preview</h3>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                {combinedWBS && combinedWBS.length > 0 ? (
-                  <WBSVisualization
-                    wbsData={combinedWBS}
-                    title="Combined Structure (Existing + New)"
-                    showNewBadges={true}
-                    maxHeight="400px"
+      {/* Step 3: Results & Export */}
+      {currentStep >= 3 && comparisonResult && (
+        <StyledPaper>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+            <Typography variant="h5" sx={{ color: BRAND_COLORS.text, fontWeight: 600 }}>
+              Step 3: Review Results & Export
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <StyledButton
+                onClick={() => handleBackToStep(2)}
+                variant="outlined"
+                size="small"
+                startIcon={<ArrowBack />}
+              >
+                Back to Equipment Upload
+              </StyledButton>
+              <StyledButton
+                onClick={handleReset}
+                variant="outlined"
+                size="small"
+                startIcon={<Refresh />}
+              >
+                Start Over
+              </StyledButton>
+            </Box>
+          </Box>
+
+          {/* Results Summary */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" sx={{ mb: 3, color: BRAND_COLORS.text, fontWeight: 600 }}>
+              📊 Processing Results
+            </Typography>
+            <Grid container spacing={3}>
+              <Grid item xs={12} sm={6} md={3}>
+                <Box sx={{ 
+                  p: 3, 
+                  backgroundColor: `${BRAND_COLORS.accent}15`,
+                  borderRadius: 2,
+                  textAlign: 'center'
+                }}>
+                  <Typography variant="h3" sx={{ color: BRAND_COLORS.accent, fontWeight: 700 }}>
+                    {comparisonResult.comparison.added.length}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: BRAND_COLORS.accent }}>
+                    New Equipment Found
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Box sx={{ 
+                  p: 3, 
+                  backgroundColor: `${BRAND_COLORS.level4}15`,
+                  borderRadius: 2,
+                  textAlign: 'center'
+                }}>
+                  <Typography variant="h3" sx={{ color: BRAND_COLORS.level4, fontWeight: 700 }}>
+                    {comparisonResult.comparison.existing.length}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: BRAND_COLORS.level4 }}>
+                    Existing Equipment
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Box sx={{ 
+                  p: 3, 
+                  backgroundColor: `${BRAND_COLORS.level3}15`,
+                  borderRadius: 2,
+                  textAlign: 'center'
+                }}>
+                  <Typography variant="h3" sx={{ color: BRAND_COLORS.level3, fontWeight: 700 }}>
+                    {comparisonResult.export_ready.length}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: BRAND_COLORS.level3 }}>
+                    WBS Items Created
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Box sx={{ 
+                  p: 3, 
+                  backgroundColor: `${BRAND_COLORS.level5}15`,
+                  borderRadius: 2,
+                  textAlign: 'center'
+                }}>
+                  <Typography variant="h3" sx={{ color: BRAND_COLORS.level5, fontWeight: 700 }}>
+                    {comparisonResult.export_ready.length}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: BRAND_COLORS.level5 }}>
+                    Ready for P6 Import
+                  </Typography>
+                </Box>
+              </Grid>
+            </Grid>
+          </Box>
+
+          {/* Export Section */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" sx={{ mb: 3, color: BRAND_COLORS.text, fontWeight: 600 }}>
+              📤 Export to P6
+            </Typography>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="body1" sx={{ color: BRAND_COLORS.text, mb: 2 }}>
+                  Download the new equipment items in P6-compatible CSV format:
+                </Typography>
+                <List>
+                  <ListItem sx={{ py: 0 }}>
+                    <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
+                    <ListItemText primary={`Contains ${comparisonResult.export_ready.length} new WBS items`} />
+                  </ListItem>
+                  <ListItem sx={{ py: 0 }}>
+                    <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
+                    <ListItemText primary="P6-compatible format (wbs_code, parent_wbs_code, wbs_name)" />
+                  </ListItem>
+                  <ListItem sx={{ py: 0 }}>
+                    <ListItemIcon sx={{ minWidth: 20 }}>•</ListItemIcon>
+                    <ListItemText primary="Ready for direct import into P6" />
+                  </ListItem>
+                </List>
+
+                <Box sx={{ mt: 3 }}>
+                  <ExportButton
+                    data={comparisonResult}
+                    exportType="comparison"
+                    variant="contained"
+                    size="large"
+                    customLabel="Export New Equipment to P6"
+                    filename={`Missing_Equipment_${new Date().toISOString().split('T')[0].replace(/-/g, '')}`}
+                    onExportComplete={handleExportComplete}
+                    startIcon={<GetApp />}
                   />
-                ) : (
-                  <p className="text-gray-600 text-center py-8">
-                    WBS visualization will appear after processing...
-                    <br />
-                    <span className="text-sm">Combined structure: {combinedWBS?.length || 0} total items</span>
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+                </Box>
+              </Grid>
 
-        {/* Debug Information */}
-        {debugInfo && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-6">
-            <h3 className="text-lg font-medium mb-3">🔧 Debug Information</h3>
-            <pre className="text-xs text-gray-700 bg-white p-3 rounded border overflow-x-auto whitespace-pre-wrap">
-              {debugInfo}
-            </pre>
-          </div>
-        )}
-      </div>
-    </div>
+              <Grid item xs={12} md={6}>
+                <Alert severity="info" icon={<Info />}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                    P6 Import Instructions:
+                  </Typography>
+                  <List dense>
+                    <ListItem sx={{ py: 0 }}>
+                      <ListItemIcon sx={{ minWidth: 20 }}>1.</ListItemIcon>
+                      <ListItemText 
+                        primary="Open Oracle Primavera P6"
+                        primaryTypographyProps={{ variant: 'body2' }}
+                      />
+                    </ListItem>
+                    <ListItem sx={{ py: 0 }}>
+                      <ListItemIcon sx={{ minWidth: 20 }}>2.</ListItemIcon>
+                      <ListItemText 
+                        primary="Go to File → Import"
+                        primaryTypographyProps={{ variant: 'body2' }}
+                      />
+                    </ListItem>
+                    <ListItem sx={{ py: 0 }}>
+                      <ListItemIcon sx={{ minWidth: 20 }}>3.</ListItemIcon>
+                      <ListItemText 
+                        primary="Select 'WBS' as import type"
+                        primaryTypographyProps={{ variant: 'body2' }}
+                      />
+                    </ListItem>
+                    <ListItem sx={{ py: 0 }}>
+                      <ListItemIcon sx={{ minWidth: 20 }}>4.</ListItemIcon>
+                      <ListItemText 
+                        primary="Choose the exported CSV file"
+                        primaryTypographyProps={{ variant: 'body2' }}
+                      />
+                    </ListItem>
+                  </List>
+                </Alert>
+              </Grid>
+            </Grid>
+          </Box>
+
+          {/* Future: WBS Visualization */}
+          <Box>
+            <Typography variant="h6" sx={{ mb: 3, color: BRAND_COLORS.text, fontWeight: 600 }}>
+              🔍 WBS Structure Preview
+            </Typography>
+            <Alert severity="info" icon={<Info />}>
+              <Typography variant="body1" sx={{ textAlign: 'center', py: 4 }}>
+                WBS visualization will be implemented in the next development phase...
+                <br />
+                <Typography variant="body2" sx={{ mt: 1, opacity: 0.7 }}>
+                  Combined structure: {combinedWBS?.length || 0} total items
+                </Typography>
+              </Typography>
+            </Alert>
+          </Box>
+        </StyledPaper>
+      )}
+
+      {/* Debug Information */}
+      {debugInfo && (
+        <StyledPaper>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography variant="h6" sx={{ color: BRAND_COLORS.text, fontWeight: 600 }}>
+              🔧 Debug Information
+            </Typography>
+            <Chip label="Development Mode" size="small" color="primary" />
+          </Box>
+          <Box
+            component="pre"
+            sx={{
+              fontSize: '12px',
+              color: BRAND_COLORS.text,
+              backgroundColor: BRAND_COLORS.background,
+              p: 2,
+              borderRadius: 1,
+              overflow: 'auto',
+              maxHeight: 300,
+              whiteSpace: 'pre-wrap',
+              fontFamily: 'monospace'
+            }}
+          >
+            {debugInfo}
+          </Box>
+        </StyledPaper>
+      )}
+    </Container>
   );
 };
 
