@@ -931,16 +931,16 @@ const MissingEquipment = () => {
                 </List>
 
                 <Box sx={{ mt: 3 }}>
-                  <ExportButton
-                    data={comparisonResult}
-                    exportType="comparison"
-                    variant="contained"
-                    size="large"
-                    customLabel="Export New Equipment to P6"
-                    filename={`Missing_Equipment_${new Date().toISOString().split('T')[0].replace(/-/g, '')}`}
-                    onExportComplete={handleExportComplete}
-                    startIcon={<GetApp />}
-                  />
+                      <ExportButton
+                        data={comparisonResult}
+                        exportType="comparison"
+                        variant="contained"
+                        size="large"
+                        customLabel="Export New Equipment to P6"
+                        filename={`Missing_Equipment_${new Date().toISOString().split('T')[0].replace(/-/g, '')}`}
+                        onExportComplete={handleExportComplete}
+                        startIcon={<GetApp />}
+                      />
                 </Box>
               </Grid>
 
