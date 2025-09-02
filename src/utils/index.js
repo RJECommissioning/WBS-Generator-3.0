@@ -32,8 +32,9 @@ export const fileHelpers = {
    * @param {string} filename 
    * @returns {string}
    */
-  getFileExtension: (filename) => {
-    return filename.split('.').pop().toLowerCase();
+    getFileExtension: (filename) => {
+      if (!filename) return '';
+      return filename.split('.').pop().toLowerCase();
   }
 };
 
