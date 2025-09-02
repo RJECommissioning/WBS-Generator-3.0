@@ -931,6 +931,7 @@ const MissingEquipment = () => {
                 </List>
 
                 <Box sx={{ mt: 3 }}>
+                      {console.log('Export button data check:', comparisonResult)}
                       <ExportButton
                         data={comparisonResult}
                         exportType="comparison"
