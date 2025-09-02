@@ -234,6 +234,7 @@ async function assignToExistingParent(equipment, existingProject) {
   const parentEquipmentNumber = equipment.parent_equipment_number;
   
   console.log(`    🔍 Priority 1: Checking parent "${parentEquipmentNumber}"`);
+  console.log(`🔍 Priority 1: Checking equipment "${equipment.equipment_number}" with parent "${equipment.parent_equipment_number}"`);
   
   // FIXED: Use the enhanced equipment mapping from P6 parser
   const equipmentMapping = existingProject.equipmentMapping || {};
@@ -300,6 +301,7 @@ async function assignToExistingParent(equipment, existingProject) {
 // FIXED: PRIORITY 2 - Assign equipment to existing subsystem
 async function assignToExistingSubsystem(equipment, existingProject, processedEquipmentData) {
   console.log(`    🔍 Priority 2: Checking existing subsystem`);
+  console.log(`🔍 Priority 2: Checking equipment "${equipment.equipment_number}" in subsystem "${equipment.subsystem}"`);
   
   // FIXED: Parse subsystem from CSV column (e.g., "33kV Switchroom 1 - +Z01")
   const subsystemCode = parseSubsystemCode(equipment.subsystem);
@@ -385,6 +387,7 @@ async function assignToNewSubsystem(equipment, existingProject, processedEquipme
   
   const subsystemInfo = parseSubsystemFromColumn(equipment.subsystem);
   console.log(`    New subsystem: "${subsystemInfo.name}" with code "${subsystemInfo.code}"`);
+  console.log(`🔍 Priority 3: Creating new subsystem for equipment "${equipment.equipment_number}"`);
   
   // This is a simplified version - full implementation would create entire subsystem structure
   // For now, create a basic placement
