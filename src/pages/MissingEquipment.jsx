@@ -267,98 +267,125 @@ const MissingEquipment = () => {
   };
 
   // Step 3: Process equipment with 3-tier priority logic
-  const handleProcessEquipment = async () => {
-    try {
-      console.log('=== STARTING MANUAL EQUIPMENT PROCESSING ===');
-      addDebugInfo('Starting manual equipment processing with 3-tier priority logic');
-      
-      clearMessages();
-      setProcessingStage('comparing', 20, 'Comparing equipment with existing project...');
+    const handleProcessEquipment = async () => {
+      try {
+        console.log('=== STARTING MANUAL EQUIPMENT PROCESSING ===');
+        addDebugInfo('Starting manual equipment processing with 3-tier priority logic');
+        
+        clearMessages();
+        setProcessingStage('comparing', 20, 'Comparing equipment with existing project...');
+    
+        // Validate that we have both datasets
+        if (!existingProject || !existingProject.wbsStructure || existingProject.wbsStructure.length === 0) {
+          throw new Error('No existing project data found. Please ensure P6 data was processed correctly.');
+        }
+    
+        if (!equipmentFileData || equipmentFileData.length === 0) {
+          throw new Error('No equipment data found. Please ensure equipment file was uploaded successfully.');
+        }
+    
+        console.log('Processing validation passed:', {
+          wbsItems: existingProject.wbsStructure.length,
+          equipmentCodes: existingProject.equipmentCodes?.length || 0,
+          newEquipmentItems: equipmentFileData.length
+        });
+    
+        addDebugInfo(`Processing validation passed:`);
+        addDebugInfo(`- P6 WBS items: ${existingProject.wbsStructure.length}`);
+        addDebugInfo(`- P6 equipment codes: ${existingProject.equipmentCodes?.length || 0}`);
+        addDebugInfo(`- New equipment items: ${equipmentFileData.length}`);
+    
+        // NEW STEP: Process raw equipment through categorization first
+        setProcessingStage('categorizing', 30, 'Categorizing equipment...');
+        console.log('Step 1: Categorizing raw equipment data...');
+        
+        const categorizedResult = await categorizeEquipment(equipmentFileData);
+        
+        if (!categorizedResult || !categorizedResult.equipment || categorizedResult.equipment.length === 0) {
+          throw new Error('Equipment categorization failed - no equipment was processed successfully.');
+        }
+        
+        console.log('Equipment categorization completed:', {
+          totalCategorized: categorizedResult.equipment.length,
+          tbcEquipment: categorizedResult.tbcEquipment?.length || 0,
+          parentItems: categorizedResult.parentItems || 0,
+          childItems: categorizedResult.childItems || 0
+        });
+    
+        addDebugInfo(`Equipment categorization completed:`);
+        addDebugInfo(`- Categorized equipment: ${categorizedResult.equipment.length} items`);
+        addDebugInfo(`- TBC equipment: ${categorizedResult.tbcEquipment?.length || 0} items`);
+        addDebugInfo(`- Parent items: ${categorizedResult.parentItems || 0}`);
+        addDebugInfo(`- Child items: ${categorizedResult.childItems || 0}`);
+    
+        setProcessingStage('comparing', 50, 'Running 3-tier priority comparison...');
+    
+        // Use the categorized equipment data for comparison
+        console.log('Step 2: Using 3-tier priority comparison logic...');
+        const comparisonData = await compareEquipmentLists(existingProject, categorizedResult.equipment);
+        
+        console.log('3-tier priority comparison completed:', {
+          newEquipment: comparisonData.comparison?.added?.length || 0,
+          existingEquipment: comparisonData.comparison?.existing?.length || 0,
+          newWBSItems: comparisonData.wbs_assignment?.new_wbs_items?.length || 0,
+          exportReady: comparisonData.export_ready?.length || 0
+        });
 
-      // Validate that we have both datasets
-      if (!existingProject || !existingProject.wbsStructure || existingProject.wbsStructure.length === 0) {
-        throw new Error('No existing project data found. Please ensure P6 data was processed correctly.');
-      }
+    addDebugInfo(`3-tier priority comparison completed:`);
+    addDebugInfo(`- New equipment found: ${comparisonData.comparison?.added?.length || 0} items`);
+    addDebugInfo(`- Existing equipment: ${comparisonData.comparison?.existing?.length || 0} items`);
+    addDebugInfo(`- New WBS items created: ${comparisonData.wbs_assignment?.new_wbs_items?.length || 0}`);
+    addDebugInfo(`- Export-ready items: ${comparisonData.export_ready?.length || 0}`);
 
-      if (!equipmentFileData || equipmentFileData.length === 0) {
-        throw new Error('No equipment data found. Please ensure equipment file was uploaded successfully.');
-      }
+    // Store comparison results for export
+    setComparisonResult(comparisonData);
 
-      console.log('Processing validation passed:', {
-        wbsItems: existingProject.wbsStructure.length,
-        equipmentCodes: existingProject.equipmentCodes?.length || 0,
-        newEquipmentItems: equipmentFileData.length
-      });
-
-      addDebugInfo(`Processing validation passed:`);
-      addDebugInfo(`- P6 WBS items: ${existingProject.wbsStructure.length}`);
-      addDebugInfo(`- P6 equipment codes: ${existingProject.equipmentCodes?.length || 0}`);
-      addDebugInfo(`- New equipment items: ${equipmentFileData.length}`);
-
-      setProcessingStage('comparing', 40, 'Running 3-tier priority comparison...');
-
-      // Use the new 3-tier priority comparison logic
-      console.log('Using 3-tier priority comparison logic...');
-      const comparisonData = await compareEquipmentLists(existingProject, equipmentFileData);
-      
-      console.log('3-tier priority comparison completed:', {
-        newEquipment: comparisonData.comparison.added.length,
-        existingEquipment: comparisonData.comparison.existing.length,
-        newWBSItems: comparisonData.wbs_assignment?.new_wbs_items?.length || 0,
-        exportReady: comparisonData.export_ready?.length || 0
-      });
-
-      addDebugInfo(`3-tier priority comparison completed:`);
-      addDebugInfo(`- New equipment found: ${comparisonData.comparison.added.length} items`);
-      addDebugInfo(`- Existing equipment: ${comparisonData.comparison.existing.length} items`);
-      addDebugInfo(`- New WBS items created: ${comparisonData.wbs_assignment?.new_wbs_items?.length || 0}`);
-      addDebugInfo(`- Export-ready items: ${comparisonData.export_ready?.length || 0}`);
-
-      // Store comparison results for export
-      setComparisonResult(comparisonData);
-
-      if (comparisonData.comparison.added.length === 0) {
-        const message = 'No new equipment found. All equipment items already exist in the project.';
-        addDebugInfo(message);
-        setError(message);
-        setProcessingStage('complete', 100, 'Processing complete - no new equipment');
-        return;
-      }
-
-      setProcessingStage('building', 80, 'Building combined project structure...');
-
-      // Use the enhanced results from new comparison
-      const combinedWBS = comparisonData.integrated_structure;
-      const exportDataReady = comparisonData.export_ready;
-
-      console.log('Integration completed:', {
-        combinedItems: combinedWBS.length,
-        exportItems: exportDataReady.length
-      });
-
-      addDebugInfo(`Integration completed:`);
-      addDebugInfo(`- Combined WBS items: ${combinedWBS.length}`);
-      addDebugInfo(`- Export-ready items: ${exportDataReady.length}`);
-      
-      // Update state with results
-      setMissingEquipmentCombinedWBS(combinedWBS);
-      setMissingEquipmentExportData(exportDataReady);
-      
-      setProcessingStage('complete', 100, 'Processing complete!');
-      setSuccess(`Successfully processed ${comparisonData.comparison.added.length} new equipment items!`);
-      
-      addDebugInfo('Manual processing completed successfully!');
-      addDebugInfo(`Final structure: ${existingProject.wbsStructure.length} existing + ${exportDataReady.length} new = ${combinedWBS.length} total`);
-      
-      setCurrentStep(3); // Move to visualization step
-
-    } catch (error) {
-      console.error('Manual equipment processing failed:', error);
-      addDebugInfo(`Manual processing failed: ${error.message}`);
-      setError(`Processing failed: ${error.message}`);
-      setProcessingStage('error', 0, error.message);
+    if (!comparisonData.comparison?.added || comparisonData.comparison.added.length === 0) {
+      const message = 'No new equipment found. All equipment items already exist in the project.';
+      addDebugInfo(message);
+      setError(message);
+      setProcessingStage('complete', 100, 'Processing complete - no new equipment');
+      return;
     }
-  };
+
+    setProcessingStage('building', 80, 'Building combined project structure...');
+
+    // Use the enhanced results from new comparison
+    const combinedWBS = comparisonData.integrated_structure;
+    const exportDataReady = comparisonData.export_ready;
+
+    if (!combinedWBS || !exportDataReady) {
+      throw new Error('Comparison completed but integration data is missing. Check projectComparer.js output format.');
+    }
+
+    console.log('Integration completed:', {
+      combinedItems: combinedWBS.length,
+      exportItems: exportDataReady.length
+    });
+
+    addDebugInfo(`Integration completed:`);
+    addDebugInfo(`- Combined WBS items: ${combinedWBS.length}`);
+    addDebugInfo(`- Export-ready items: ${exportDataReady.length}`);
+    
+    // Update state with results
+    setMissingEquipmentCombinedWBS(combinedWBS);
+    setMissingEquipmentExportData(exportDataReady);
+    
+    setProcessingStage('complete', 100, 'Processing complete!');
+    setSuccess(`Successfully processed ${comparisonData.comparison.added.length} new equipment items!`);
+    
+    addDebugInfo('Manual processing completed successfully!');
+    addDebugInfo(`Final structure: ${existingProject.wbsStructure.length} existing + ${exportDataReady.length} new = ${combinedWBS.length} total`);
+    
+    setCurrentStep(3); // Move to visualization step
+
+  } catch (error) {
+    console.error('Manual equipment processing failed:', error);
+    addDebugInfo(`Manual processing failed: ${error.message}`);
+    setError(`Processing failed: ${error.message}`);
+    setProcessingStage('error', 0, error.message);
+  }
+};
 
   // Handle step progression
   const handleConfirmP6Parsing = () => {
