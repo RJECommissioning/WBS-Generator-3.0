@@ -112,8 +112,7 @@ export const parseFile = async (file) => {
     console.log('File details:', {
       name: file.name,
       size: file.size,
-      type: file.type,
-      lastModified: new Date(file.lastModified).toISOString()
+      type: file.type
     });
 
     // Read file as array buffer first
