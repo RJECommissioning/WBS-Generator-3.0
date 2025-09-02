@@ -120,8 +120,8 @@ useProjectStore.setState(state => ({
 }));
 const result = { file, status: 'success' };
       
-      if (result && onFileProcessed) {
-        onFileProcessed(result);
+      if (file && onFileProcessed) {
+        onFileProcessed(file);
       }
 
       setSuccess(`File "${file.name}" uploaded successfully!`);
