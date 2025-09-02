@@ -155,8 +155,8 @@ const MissingEquipment = () => {
   // Reset state on component mount
   useEffect(() => {
     console.log('Missing Equipment component mounted - resetting state');
-    resetMissingEquipment();
-    clearMessages();
+    // resetMissingEquipment();  // COMMENTED OUT FOR TESTING
+    // clearMessages();          // COMMENTED OUT FOR TESTING
     setCurrentStep(1);
     setEquipmentFileData(null);
     setComparisonResult(null);
