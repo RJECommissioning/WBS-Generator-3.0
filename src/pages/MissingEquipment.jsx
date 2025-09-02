@@ -601,66 +601,78 @@ const MissingEquipment = () => {
             </StyledButton>
           </Box>
 
-          {/* P6 Processing Results */}
-          {existingProject && existingProject.wbsStructure && (
-            <Box sx={{ mt: 3 }}>
-              <Alert severity="success" icon={<CheckCircle />}>
-                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                  ✅ P6 Data Processed Successfully
-                </Typography>
-                <Grid container spacing={3}>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" sx={{ color: BRAND_COLORS.accent, fontWeight: 700 }}>
-                        {existingProject.wbsStructure.length}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7 }}>
-                        Total WBS Items
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Box sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" sx={{ color: BRAND_COLORS.level4, fontWeight: 700 }}>
-                        {existingProject.equipmentCodes?.length || 0}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7 }}>
-                        Equipment Codes Found
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Typography variant="body2" sx={{ color: BRAND_COLORS.text, fontWeight: 500 }}>
-                      Project Name:
+        {/* P6 Processing Results */}
+        {existingProject && existingProject.wbsStructure && (
+          <Box sx={{ mt: 3 }}>
+            <Alert severity="success" icon={<CheckCircle />}>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                ✅ P6 Data Processed Successfully
+              </Typography>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" sx={{ color: BRAND_COLORS.accent, fontWeight: 700 }}>
+                      {existingProject.wbsStructure.length}
                     </Typography>
                     <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7 }}>
-                      {existingProject.projectName}
+                      Total WBS Items
                     </Typography>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Typography variant="body2" sx={{ color: BRAND_COLORS.text, fontWeight: 500 }}>
-                      Sample Equipment:
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7, fontSize: '12px' }}>
-                      {existingProject.equipmentCodes?.slice(0, 3).join(', ') || 'None'}
-                    </Typography>
-                  </Grid>
+                  </Box>
                 </Grid>
-                
-                <Box sx={{ mt: 3 }}>
-                  <StyledButton 
-                    variant="contained"
-                    onClick={handleConfirmP6Parsing}
-                    endIcon={<ArrowBack sx={{ transform: 'rotate(180deg)' }} />}
-                  >
-                    Continue to Equipment Upload
-                  </StyledButton>
-                </Box>
-              </Alert>
-            </Box>
-          )}
-        </StyledPaper>
-      )}
+                <Grid item xs={12} sm={6} md={3}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" sx={{ color: BRAND_COLORS.level4, fontWeight: 700 }}>
+                      {existingProject.equipmentCodes?.length || 0}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7 }}>
+                      Equipment Codes Found
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Typography variant="body2" sx={{ color: BRAND_COLORS.text, fontWeight: 500 }}>
+                    Project Name:
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7 }}>
+                    {existingProject.projectName}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Typography variant="body2" sx={{ color: BRAND_COLORS.text, fontWeight: 500 }}>
+                    Sample Equipment:
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: BRAND_COLORS.text, opacity: 0.7, fontSize: '12px' }}>
+                    {existingProject.equipmentCodes?.slice(0, 3).join(', ') || 'None'}
+                  </Typography>
+                </Grid>
+              </Grid>
+              
+              {/* ADD THIS SECTION - WBS Structure Visualization */}
+              <Box sx={{ mt: 4 }}>
+                <Typography variant="h6" sx={{ mb: 2, color: BRAND_COLORS.text, fontWeight: 600 }}>
+                  🏗️ WBS Structure Preview
+                </Typography>
+                <WBSVisualization 
+                  wbsData={existingProject.wbsStructure}
+                  projectName={existingProject.projectInfo?.projectName || existingProject.projectName}
+                  showNewItems={false}
+                  maxInitialDepth={2}
+                />
+              </Box>
+              {/* END OF ADDED SECTION */}
+              
+              <Box sx={{ mt: 3 }}>
+                <StyledButton 
+                  variant="contained"
+                  onClick={handleConfirmP6Parsing}
+                  endIcon={<ArrowBack sx={{ transform: 'rotate(180deg)' }} />}
+                >
+                  Continue to Equipment Upload
+                </StyledButton>
+              </Box>
+            </Alert>
+          </Box>
+        )}
 
       {/* Step 2: Equipment Upload */}
       {currentStep >= 2 && (
