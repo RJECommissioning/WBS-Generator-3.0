@@ -179,31 +179,34 @@ const MissingEquipment = () => {
   // Step 1: Handle P6 data paste
   const handleP6Paste = async (content) => {
     try {
-      console.log('=== STARTING P6 PASTE PROCESSING ===');
-      addDebugInfo(`Starting P6 paste processing: ${content.length} characters`);
-      
-      clearMessages();
-      setProcessingStage('parsing', 20, 'Processing P6 data...');
-
-      const result = await processP6Paste(content);
-
-      if (result.success) {
-        setMissingEquipmentExistingProject(result.data);
-        addDebugInfo(`P6 parsing successful! Found ${result.data.wbsStructure.length} WBS items`);
-        addDebugInfo(`Project: ${result.data.projectName}`);
-        addDebugInfo(`Equipment codes extracted: ${result.data.equipmentCodes.length}`);
-        addDebugInfo('P6 data processing completed - ready for next step');
-      } else {
-        throw new Error(result.error || 'Failed to process P6 data');
+        console.log('=== STARTING P6 PASTE PROCESSING ===');
+        addDebugInfo(`Starting P6 paste processing: ${content.length} characters`);
+        
+        clearMessages();
+        setProcessingStage('parsing', 20, 'Processing P6 data...');
+        
+        const result = await processP6Paste(content);
+        
+        if (result.success) {
+          setMissingEquipmentExistingProject(result.data);
+          addDebugInfo(`P6 parsing successful! Found ${result.data.wbsStructure.length} WBS items`);
+          addDebugInfo(`Project: ${result.data.projectInfo.projectName}`);
+          addDebugInfo(`Equipment codes extracted: ${result.data.equipmentCodes.length}`);
+          addDebugInfo('P6 data processing completed - ready for next step');
+          
+          // MISSING LINE - Clear the processing stage to stop the spinner
+          setProcessingStage('complete', 100, 'P6 data processed successfully!');
+          setSuccess(`P6 data processed successfully! Found ${result.data.wbsStructure.length} WBS items.`);
+        } else {
+          throw new Error(result.error || 'Failed to process P6 data');
+        }
+      } catch (error) {
+        console.error('P6 processing failed:', error);
+        addDebugInfo(`P6 processing failed: ${error.message}`);
+        setError(`P6 processing failed: ${error.message}`);
+        setProcessingStage('error', 0, error.message);
       }
-
-    } catch (error) {
-      console.error('P6 processing failed:', error);
-      addDebugInfo(`P6 processing failed: ${error.message}`);
-      setError(`P6 processing failed: ${error.message}`);
-      setProcessingStage('error', 0, error.message);
-    }
-  };
+    };
 
   // Step 2: Handle equipment file upload
   const handleEquipmentFile = async (file) => {
