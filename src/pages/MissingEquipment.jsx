@@ -174,7 +174,7 @@ const MissingEquipment = () => {
       console.log('Processing ready state changed:', `P6 ready: ${p6Ready}, Equipment ready: ${equipmentReady ? equipmentFileData.length : null}`);
       setIsProcessingReady(ready);
     }
-  }, [existingProject?.equipmentCodes?.length, equipmentFileData?.length, isProcessingReady]);
+  }, [existingProject?.equipmentCodes?.length, equipmentFileData?.length,]);
 
   // Step 1: Handle P6 data paste
   const handleP6Paste = async (content) => {
