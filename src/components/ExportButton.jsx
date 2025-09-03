@@ -64,10 +64,11 @@ const ExportButton = ({
   variant = 'contained',
   size = 'medium',
   disabled = false,
-  exportType = 'wbs', // 'wbs' | 'equipment' | 'comparison'
+  exportType = 'wbs',
   includeNewOnly = false,
   customLabel = null,
-  onExportComplete = null
+  onExportComplete = null,
+  data  // ADD THIS LINE
 }) => {
   // Store hooks
   const { 
@@ -90,37 +91,46 @@ const ExportButton = ({
   });
   const [isExporting, setIsExporting] = useState(false);
 
-  // Get export data based on type
-  const getExportData = () => {
-    switch (exportOptions.exportType) {
-      case 'wbs':
-        return project.wbs_structure || [];
-      case 'equipment':
-        return project.equipment_list || [];
-      case 'comparison':
-        return comparison;
-      default:
-        return [];
-    }
-  };
+// canExport function - SEPARATE function
+const canExport = () => {
+  if (exportOptions.exportType === 'comparison') {
+    return data?.export_ready?.length > 0;
+  }
+  
+  const exportData = getExportData();
+  return Array.isArray(exportData) && exportData.length > 0;
+};
 
-  // Get export statistics
-  const getStats = () => {
-    const data = getExportData();
-    
-    if (exportOptions.exportType === 'comparison') {
-      return {
-        total_items: comparison.added.length + comparison.removed.length + comparison.modified.length,
-        new_items: comparison.added.length,
-        removed_items: comparison.removed.length,
-        modified_items: comparison.modified.length,
-        export_count: exportOptions.includeNewOnly ? comparison.added.length : 
-                     comparison.added.length + comparison.removed.length + comparison.modified.length
-      };
-    } else {
-      return getExportStatistics(data, exportOptions);
-    }
-  };
+// getExportData function - SEPARATE function  
+const getExportData = () => {
+  switch (exportOptions.exportType) {
+    case 'wbs':
+      return project.wbs_structure || [];
+    case 'equipment':
+      return project.equipment_list || [];
+    case 'comparison':
+      return data?.export_ready || []; // Also update this line per Change 2
+    default:
+      return [];
+  }
+};
+
+    const getStats = () => {
+      const exportData = getExportData();
+      
+      if (exportOptions.exportType === 'comparison') {
+        const exportCount = exportData.length;
+        return {
+          total_items: exportCount,
+          new_items: exportCount,
+          removed_items: 0,
+          modified_items: 0,
+          export_count: exportCount
+        };
+      } else {
+        return getExportStatistics(exportData, exportOptions);
+      }
+    };
 
   // Handle export dialog open
   const handleDialogOpen = () => {
@@ -177,9 +187,37 @@ const ExportButton = ({
           break;
 
         case 'comparison':
-          exportResult = await exportComparisonToCSV(data, {
-            filename: exportOptions.filename + '.csv'
-          });
+          const csvData = data?.export_ready || [];
+          
+          if (csvData.length === 0) {
+            throw new Error('No data available for export');
+          }
+          
+          const headers = ['wbs_code', 'parent_wbs_code', 'wbs_name'];
+          const csvContent = [
+            exportOptions.includeHeaders ? headers.join(',') : null,
+            ...csvData.map(item => [
+              item.wbs_code || '',
+              item.parent_wbs_code || '',
+              item.wbs_name || ''
+            ].join(','))
+          ].filter(row => row !== null).join('\n');
+          
+          const blob = new Blob([csvContent], { type: 'text/csv' });
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = exportOptions.filename + '.csv';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          
+          exportResult = {
+            filename: exportOptions.filename + '.csv',
+            recordCount: csvData.length,
+            success: true
+          };
           break;
 
         default:
@@ -208,17 +246,6 @@ const ExportButton = ({
       ...prev,
       [field]: value
     }));
-  };
-
-  // Check if export is possible
-  const canExport = () => {
-    const data = getExportData();
-    
-    if (exportOptions.exportType === 'comparison') {
-      return comparison.added.length > 0 || comparison.removed.length > 0 || comparison.modified.length > 0;
-    }
-    
-    return Array.isArray(data) && data.length > 0;
   };
 
   // Get button label
@@ -314,7 +341,7 @@ const ExportButton = ({
       <StyledButton
         variant={variant}
         size={size}
-        disabled={disabled || isExporting}
+        disabled={disabled || !canExport() || isExporting}
         onClick={handleDialogOpen}
         startIcon={isExporting ? <CircularProgress size={16} /> : <FileDownload />}
       >
@@ -358,11 +385,11 @@ const ExportButton = ({
                 control={<Radio sx={{ color: BRAND_COLORS.accent }} />} 
                 label="Equipment List" 
               />
-              {(comparison.added.length > 0 || comparison.removed.length > 0) && (
+             {(data?.export_ready?.length > 0) && (
                 <FormControlLabel 
                   value="comparison" 
                   control={<Radio sx={{ color: BRAND_COLORS.accent }} />} 
-                  label="Changes Summary" 
+                  label="New Equipment (P6 Compatible)" 
                 />
               )}
             </RadioGroup>
