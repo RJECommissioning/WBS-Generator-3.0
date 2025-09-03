@@ -1,6 +1,7 @@
 import { arrayHelpers, stringHelpers, wbsHelpers } from '../utils';
 import { categorizeEquipment } from './equipmentProcessor';
 import { EQUIPMENT_CATEGORIES, WBS_LEVEL_COLORS, BRAND_COLORS } from '../constants';
+let createdSubsystems = new Map();
 
 /**
  * CORRECTED Project Comparer - 3-Tier Priority Logic Implementation
@@ -381,48 +382,110 @@ async function assignToExistingSubsystem(equipment, existingProject, processedEq
   };
 }
 
-// PRIORITY 3: Assign equipment to new subsystem
 async function assignToNewSubsystem(equipment, existingProject, processedEquipmentData) {
-  console.log(`    🔍 Priority 3: Creating new subsystem`);
-  
-  const subsystemInfo = parseSubsystemFromColumn(equipment.subsystem);
-  console.log(`    New subsystem: "${subsystemInfo.name}" with code "${subsystemInfo.code}"`);
-  console.log(`🔍 Priority 3: Creating new subsystem for equipment "${equipment.equipment_number}"`);
-  
-  // This is a simplified version - full implementation would create entire subsystem structure
-  // For now, create a basic placement
-  const projectRoot = getProjectRootWBSCode(existingProject);
-  const nextSubsystemNumber = getNextSubsystemNumber(existingProject);
-  const newSubsystemWBSCode = `${projectRoot}.${nextSubsystemNumber}`;
-  
-  console.log(`    Creating new subsystem at WBS: ${newSubsystemWBSCode}`);
-  
-  // In full implementation, this would return an array of WBS items:
-  // [subsystem, categories 01-99, equipment placement]
-  // For now, simplified single equipment placement
-  
-  const fallbackCategoryWBSCode = `${newSubsystemWBSCode}.${equipment.category || 99}`;
-  const equipmentWBSCode = `${fallbackCategoryWBSCode}.1`;
-  
-  console.log(`    ✅ Priority 3 SUCCESS: Assigning to new subsystem: ${equipmentWBSCode}`);
-  
-  return {
-    wbs_code: equipmentWBSCode,
-    parent_wbs_code: fallbackCategoryWBSCode,
-    wbs_name: `${equipment.equipment_number} | ${equipment.description}`,
-    equipment_number: equipment.equipment_number,
-    description: equipment.description,
-    commissioning_yn: equipment.commissioning_yn,
-    category: equipment.category,
-    category_name: equipment.category_name,
-    level: 5,
-    is_equipment: true,
-    is_structural: false,
-    subsystem: equipment.subsystem,
-    isNew: true
-  };
+ console.log(`    🔍 Priority 3: Creating new subsystem`);
+ console.log(`🔍 Priority 3: Creating new subsystem for equipment "${equipment.equipment_number}"`);
+ 
+ const subsystemInfo = parseSubsystemFromColumn(equipment.subsystem);
+ console.log(`    New subsystem: "${subsystemInfo.name}" with code "${subsystemInfo.code}"`);
+ 
+ const projectRoot = getProjectRootWBSCode(existingProject);
+ const subsystemKey = subsystemInfo.code || equipment.subsystem;
+ 
+ let subsystemStructure = createdSubsystems.get(subsystemKey);
+ 
+ if (!subsystemStructure) {
+   console.log(`    📦 Creating new subsystem structure for "${subsystemKey}"`);
+   
+   const nextSubsystemNumber = getNextSubsystemNumber(existingProject);
+   const newSubsystemWBSCode = `${projectRoot}.${nextSubsystemNumber}`;
+   
+   console.log(`    Creating subsystem at WBS: ${newSubsystemWBSCode}`);
+   
+   const categories = {};
+   for (let i = 1; i <= 99; i++) {
+     const categoryCode = String(i).padStart(2, '0');
+     categories[categoryCode] = `${newSubsystemWBSCode}.${categoryCode}`;
+   }
+   
+   subsystemStructure = {
+     wbsCode: newSubsystemWBSCode,
+     name: subsystemInfo.name,
+     code: subsystemInfo.code,
+     subsystemNumber: nextSubsystemNumber,
+     categories: categories
+   };
+   
+   createdSubsystems.set(subsystemKey, subsystemStructure);
+   
+   console.log(`    ✅ Subsystem structure created and cached for reuse`);
+ } else {
+   console.log(`    ♻️  Reusing existing subsystem structure for "${subsystemKey}"`);
+ }
+ 
+ const equipmentCategory = String(equipment.category || 99).padStart(2, '0');
+ const categoryWBSCode = subsystemStructure.categories[equipmentCategory];
+ 
+ const existingEquipmentInCategory = createdSubsystems.get(subsystemKey + '_' + equipmentCategory + '_count') || 0;
+ const nextEquipmentNumber = existingEquipmentInCategory + 1;
+ 
+ createdSubsystems.set(subsystemKey + '_' + equipmentCategory + '_count', nextEquipmentNumber);
+ 
+ const equipmentWBSCode = `${categoryWBSCode}.${nextEquipmentNumber}`;
+ 
+ console.log(`    ✅ Priority 3 SUCCESS: Assigning equipment to: ${equipmentWBSCode}`);
+ 
+ const wbsItems = [];
+ 
+ const categoryKey = subsystemKey + '_cat_' + equipmentCategory;
+ if (!createdSubsystems.has(categoryKey)) {
+   const subsystemKey_created = subsystemKey + '_subsystem_created';
+   if (!createdSubsystems.has(subsystemKey_created)) {
+     wbsItems.push({
+       wbs_code: subsystemStructure.wbsCode,
+       parent_wbs_code: projectRoot,
+       wbs_name: `S${subsystemStructure.subsystemNumber} | ${subsystemStructure.code} | ${subsystemStructure.name}`,
+       level: 2,
+       is_equipment: false,
+       is_structural: true,
+       subsystem: equipment.subsystem,
+       isNew: true
+     });
+     createdSubsystems.set(subsystemKey_created, true);
+   }
+   
+   const categoryName = EQUIPMENT_CATEGORIES[equipmentCategory] || 'Unrecognised Equipment';
+   wbsItems.push({
+     wbs_code: categoryWBSCode,
+     parent_wbs_code: subsystemStructure.wbsCode,
+     wbs_name: `${equipmentCategory} | ${categoryName}`,
+     level: 3,
+     is_equipment: false,
+     is_structural: true,
+     subsystem: equipment.subsystem,
+     isNew: true
+   });
+   createdSubsystems.set(categoryKey, true);
+ }
+ 
+ wbsItems.push({
+   wbs_code: equipmentWBSCode,
+   parent_wbs_code: categoryWBSCode,
+   wbs_name: `${equipment.equipment_number} | ${equipment.description}`,
+   equipment_number: equipment.equipment_number,
+   description: equipment.description,
+   commissioning_yn: equipment.commissioning_yn,
+   category: equipment.category,
+   category_name: equipment.category_name,
+   level: 4,
+   is_equipment: true,
+   is_structural: false,
+   subsystem: equipment.subsystem,
+   isNew: true
+ });
+ 
+ return wbsItems;
 }
-
 // FIXED: MAIN 3-TIER PRIORITY LOGIC - Core function for WBS assignment
 async function assign3TierPriorityWBSCodes(newEquipment, existingProject, processedEquipmentData) {
   console.log('=== STARTING 3-TIER PRIORITY WBS ASSIGNMENT ===');
