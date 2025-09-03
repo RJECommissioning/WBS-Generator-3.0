@@ -314,7 +314,7 @@ const ExportButton = ({
       <StyledButton
         variant={variant}
         size={size}
-        disabled={disabled || !canExport() || isExporting}
+        disabled={disabled || isExporting}
         onClick={handleDialogOpen}
         startIcon={isExporting ? <CircularProgress size={16} /> : <FileDownload />}
       >
