@@ -428,7 +428,7 @@ processMissingEquipment: async (equipmentFile) => {
     setProcessingStage('comparing', 50, 'Comparing equipment lists...');
     
     // Import the comparison function
-    const { compareEquipmentWithSubsystems } = await import('../lib/projectComparer');
+    const { compareEquipmentLists } = await import('../lib/projectComparer');
     
     // Prepare existing P6 data in expected format
     const existingP6Data = {
