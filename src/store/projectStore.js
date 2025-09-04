@@ -398,6 +398,7 @@ const useProjectStore = create((set, get) => ({
 // Replace your existing processMissingEquipment with this:
 
     processMissingEquipment: async (equipmentFile) => {
+      console.log('🚀 MISSING EQUIPMENT FUNCTION STARTED');
       const { 
         uploadFile, 
         setProcessingStage, 
