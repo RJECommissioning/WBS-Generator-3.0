@@ -549,41 +549,41 @@ const StartNewProject = () => {
                     />
                   </Box>
 
-                  <Alert severity="info" icon={<Info />}>
-                    <Typography variant="body2">
-                      <strong>P6 Import Instructions:</strong>
-                    </Typography>
-                    <List dense>
-                      <ListItem sx={{ py: 0 }}>
-                        <ListItemIcon sx={{ minWidth: 20 }}>1.</ListItemIcon>
-                        <ListItemText 
-                          primary="Open Oracle Primavera P6"
-                          primaryTypographyProps={{ variant: 'body2' }}
-                        />
-                      </ListItem>
-                      <ListItem sx={{ py: 0 }}>
-                        <ListItemIcon sx={{ minWidth: 20 }}>2.</ListItemIcon>
-                        <ListItemText 
-                          primary="Go to File → Import"
-                          primaryTypographyProps={{ variant: 'body2' }}
-                        />
-                      </ListItem>
-                      <ListItem sx={{ py: 0 }}>
-                        <ListItemIcon sx={{ minWidth: 20 }}>3.</ListItemIcon>
-                        <ListItemText 
-                          primary="Select 'WBS' as import type"
-                          primaryTypographyProps={{ variant: 'body2' }}
-                        />
-                      </ListItem>
-                      <ListItem sx={{ py: 0 }}>
-                        <ListItemIcon sx={{ minWidth: 20 }}>4.</ListItemIcon>
-                        <ListItemText 
-                          primary="Choose the exported CSV file"
-                          primaryTypographyProps={{ variant: 'body2' }}
-                        />
-                      </ListItem>
-                    </List>
-                  </Alert>
+                 <Alert severity="warning" icon={<Info />}>
+                      <Typography variant="body2">
+                        <strong>P6 Import Instructions:</strong>
+                      </Typography>
+                      <List dense>
+                        <ListItem sx={{ py: 0 }}>
+                          <ListItemIcon sx={{ minWidth: 20 }}>1.</ListItemIcon>
+                          <ListItemText 
+                            primary="Contact Taison Eady for API setup"
+                            primaryTypographyProps={{ variant: 'body2' }}
+                          />
+                        </ListItem>
+                        <ListItem sx={{ py: 0 }}>
+                          <ListItemIcon sx={{ minWidth: 20 }}>2.</ListItemIcon>
+                          <ListItemText 
+                            primary="Install API via VS Code on your computer"
+                            primaryTypographyProps={{ variant: 'body2' }}
+                          />
+                        </ListItem>
+                        <ListItem sx={{ py: 0 }}>
+                          <ListItemIcon sx={{ minWidth: 20 }}>3.</ListItemIcon>
+                          <ListItemText 
+                            primary="Upload CSV through API interface"
+                            primaryTypographyProps={{ variant: 'body2' }}
+                          />
+                        </ListItem>
+                        <ListItem sx={{ py: 0 }}>
+                          <ListItemIcon sx={{ minWidth: 20 }}>4.</ListItemIcon>
+                          <ListItemText 
+                            primary="Import to selected P6 project"
+                            primaryTypographyProps={{ variant: 'body2' }}
+                          />
+                        </ListItem>
+                      </List>
+                    </Alert>
                 </Grid>
 
                 <Grid item xs={12} md={6}>
