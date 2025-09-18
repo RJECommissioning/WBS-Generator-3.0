@@ -32,7 +32,7 @@ import {
   Error as ErrorIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 // Zustand store import
 import useProjectStore from '../store/projectStore';
@@ -693,15 +693,42 @@ const StartNewProject = () => {
       {/* Loading Spinner */}
       <LoadingSpinner variant="modal" />
 
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" component="h1" sx={{ mb: 2, color: BRAND_COLORS.text, fontWeight: 600 }}>
-          Start New Project
-        </Typography>
-        <Typography variant="body1" sx={{ color: BRAND_COLORS.text, opacity: 0.8 }}>
-          Upload an equipment list and generate a complete WBS structure for Oracle Primavera P6
-        </Typography>
-      </Box>
+        {/* Header */}
+        <Box sx={{ mb: 4, position: 'relative' }}>
+          <Typography variant="h4" component="h1" sx={{ mb: 2, color: BRAND_COLORS.text, fontWeight: 600 }}>
+            Start New Project
+          </Typography>
+          <Typography variant="body1" sx={{ color: BRAND_COLORS.text, opacity: 0.8 }}>
+            Upload an equipment list and generate a complete WBS structure for Oracle Primavera P6
+          </Typography>
+          
+          {/* Home Button - Top Right */}
+          <Box sx={{ 
+            position: 'absolute', 
+            top: 0, 
+            right: 0 
+          }}>
+            <Link 
+              to="/" 
+              style={{ textDecoration: 'none' }}
+            >
+              <Button
+                variant="outlined"
+                size="small"
+                sx={{
+                  color: BRAND_COLORS.accent,
+                  borderColor: BRAND_COLORS.accent,
+                  '&:hover': {
+                    borderColor: BRAND_COLORS.level5,
+                    backgroundColor: `${BRAND_COLORS.accent}10`
+                  }
+                }}
+              >
+                Home
+              </Button>
+            </Link>
+          </Box>
+        </Box>
 
       {/* Success/Error Messages */}
       {ui.success && (
